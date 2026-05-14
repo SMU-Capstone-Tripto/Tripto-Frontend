@@ -26,6 +26,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   bool _isButtonEnabled = false;
 
+  /// 컨트롤러 리스너 초기화 및 상태 설정.
   @override
   void initState() {
     super.initState();
@@ -34,7 +35,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     _emailController.addListener(_validateInputs);
   }
 
-  /// 모든 필수 입력값의 유효성을 검사함.
+  /// 모든 필수 입력값의 유효성을 검사하여 버튼 활성화 상태를 업데이트함.
+  /// 
+  /// - 목적: 닉네임, 생년월일 존재 여부 및 이메일 형식을 체크함.
   void _validateInputs() {
     final nickname = _nicknameController.text.trim();
     final birth = _birthController.text.trim();
@@ -48,14 +51,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     });
   }
 
-  /// 프로필 사진 삭제 확인 팝업을 표시함.
+  /// 프로필 사진 삭제 여부를 확인하는 팝업창을 표시함.
+  /// 
+  /// - 목적: 사용자 실수 방지를 위한 삭제 컨펌 다이얼로그 노출.
   void _showDeleteConfirmation() {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           insetPadding: const EdgeInsets.symmetric(horizontal: 80.0),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)), // 팝업창도 부드럽게
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
           title: const Text('사진 삭제', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           content: const Text('삭제하시겠습니까?', style: TextStyle(fontSize: 14)),
           actions: [
@@ -70,7 +75,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  /// 휠 스피너 방식의 날짜 선택기를 호출함.
+  /// 휠 스피너 방식의 날짜 선택 모달 시트를 호출함.
+  /// 
+  /// - [context]: 위젯 트리의 위치 정보.
+  /// - 목적: 생년월일 데이터를 텍스트 필드에 포맷팅하여 입력함.
   Future<void> _selectDate(BuildContext context) async {
     DateTime initialDate = DateTime(2000, 1, 1);
     DateTime tempDate = initialDate;
@@ -95,10 +103,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       setState(() {
                         _birthController.text = "${tempDate.year}년 ${tempDate.month.toString().padLeft(2, '0')}월 ${tempDate.day.toString().padLeft(2, '0')}일";
                       });
-                      Navigator.pop(context); // 현재 모달창 닫기
-                      
-                      // ✨ 포커스 버그 해결: 노드에 직접 포커스 요청
-                      // 팝업이 닫힌 후 안전하게 다음 입력창으로 커서를 옮김
+                      Navigator.pop(context);
                       _emailFocus.requestFocus(); 
                     },
                     child: const Text('확인', style: TextStyle(color: Color(0xFF6B4FD9), fontWeight: FontWeight.bold)),
@@ -120,6 +125,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
+  /// 화면 레이아웃을 빌드함.
+  /// 
+  /// - [context]: 빌드 컨텍스트.
+  /// - 반환값: 프로필 설정 전체 UI 위젯.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -165,7 +174,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  /// 프로필 사진 선택 위젯을 생성함.
+  /// 갤러리 연동 및 미리보기가 포함된 이미지 피커 위젯을 생성함.
+  /// 
+  /// - 반환값: 프로필 사진 선택 영역 위젯.
   Widget _buildProfileImagePicker() {
     return Stack(
       children: [
@@ -190,7 +201,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  /// 부드러운 네모 상자 스타일의 입력 필드를 생성함.
+  /// 라벨이 포함된 부드러운 네모 스타일 입력 필드 위젯을 생성함.
+  /// 
+  /// - [label]: 상단 텍스트 라벨.
+  /// - [controller]: 텍스트 제어기.
+  /// - [hint]: 입력 힌트 문구.
+  /// - [focusNode]: 포커스 관리 노드.
+  /// - [maxLength]: 최대 글자 수 제한.
+  /// - [readOnly]: 읽기 전용 모드 활성화 여부.
+  /// - [onTap]: 클릭 시 콜백 함수.
+  /// - [keyboardType]: 키보드 입력 유형.
+  /// - 반환값: 구성된 텍스트 필드 세트 위젯.
   Widget _buildInputField({
     required String label, required TextEditingController controller, required String hint, FocusNode? focusNode,
     int? maxLength, bool readOnly = false, VoidCallback? onTap, TextInputType keyboardType = TextInputType.text,
@@ -206,7 +227,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 15),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.15), 
-              borderRadius: BorderRadius.circular(15), // ✨ 부드러운 네모로 변경
+              borderRadius: BorderRadius.circular(15),
               border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
             ),
             child: TextField(
@@ -221,7 +242,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  /// 선호 스타일 조사 화면으로 이동하는 완료 버튼을 생성함.
+  /// 선호 여행 스타일 선택 화면으로 이동하는 제출 버튼 위젯을 생성함.
+  /// 
+  /// - 반환값: 조건부 활성화 기능이 포함된 완료 버튼 위젯.
   Widget _buildSubmitButton() {
     return _AnimatedScaleButton(
       isEnabled: _isButtonEnabled,
@@ -232,13 +255,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         width: double.infinity, height: 55, margin: const EdgeInsets.only(top: 30),
         decoration: BoxDecoration(
           color: _isButtonEnabled ? Colors.white : Colors.white.withValues(alpha: 0.3), 
-          borderRadius: BorderRadius.circular(15), // ✨ 버튼도 부드러운 네모로 변경
+          borderRadius: BorderRadius.circular(15), 
         ),
         child: Center(child: Text('저장 및 완료', style: TextStyle(color: _isButtonEnabled ? const Color(0xFF6B4FD9) : Colors.white60, fontSize: 17, fontWeight: FontWeight.bold))),
       ),
     );
   }
 
+  /// 컨트롤러 및 노드 자원을 해제하여 메모리 누수를 방지함.
   @override
   void dispose() {
     _nicknameController.dispose(); _birthController.dispose(); _emailController.dispose();
@@ -247,15 +271,23 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   }
 }
 
-/// 클릭 시 크기 애니메이션이 적용된 버튼 위젯.
+/// 클릭 상호작용 시 크기가 축소되는 애니메이션 효과 버튼 위젯.
 class _AnimatedScaleButton extends StatefulWidget {
-  final Widget child; final VoidCallback onPressed; final bool isEnabled;
+  final Widget child; 
+  final VoidCallback onPressed; 
+  final bool isEnabled;
+
   const _AnimatedScaleButton({required this.child, required this.onPressed, required this.isEnabled});
   @override State<_AnimatedScaleButton> createState() => _AnimatedScaleButtonState();
 }
 
+/// [_AnimatedScaleButton]의 애니메이션 상태를 관리하는 클래스.
 class _AnimatedScaleButtonState extends State<_AnimatedScaleButton> {
   double _scale = 1.0;
+
+  /// 버튼 빌드 및 애니메이션 적용.
+  /// 
+  /// - 반환값: 배율 효과가 적용된 [AnimatedScale] 위젯.
   @override
   Widget build(BuildContext context) {
     return GestureDetector(

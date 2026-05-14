@@ -3,6 +3,7 @@ import 'main_home_screen.dart';
 
 /// 사용자의 여행 스타일 취향을 수집하는 화면 위젯.
 class TravelStyleScreen extends StatefulWidget {
+  /// [TravelStyleScreen] 위젯의 생성자.
   const TravelStyleScreen({super.key});
 
   @override
@@ -11,10 +12,10 @@ class TravelStyleScreen extends StatefulWidget {
 
 /// [TravelStyleScreen]의 상태 관리 및 UI 빌드 로직 클래스.
 class _TravelStyleScreenState extends State<TravelStyleScreen> {
-  /// 선택된 스타일을 관리하는 집합.
+  /// 선택된 스타일을 관리하는 집합 (중복 방지).
   final Set<String> _selectedStyles = {};
 
-  /// 화면에 표시할 여행 옵션 정보 목록.
+  /// 화면에 표시할 여행 옵션 정보 목록 (아이콘 및 라벨).
   final List<Map<String, String>> _options = [
     {'icon': '🏖️', 'label': '힐링'},
     {'icon': '🏙️', 'label': '감성'},
@@ -26,9 +27,10 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
     {'icon': '🏛️', 'label': '문화'},
   ];
 
-  /// 스타일 선택 상태를 전환함.
+  /// 스타일 선택 상태를 토글함.
   ///
-  /// [label]: 토글할 스타일의 텍스트 라벨.
+  /// - [label]: 토글할 스타일의 텍스트 라벨.
+  /// - 목적: 선택된 라벨이 있으면 제거하고, 없으면 추가함.
   void _toggleStyle(String label) {
     setState(() {
       if (_selectedStyles.contains(label)) {
@@ -40,6 +42,8 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
   }
 
   /// 메인 홈 화면으로 이동함.
+  /// 
+  /// - 목적: 이전 화면으로 돌아가지 못하게 [pushReplacement]를 사용하여 화면을 전환함.
   void _goToMain() {
     Navigator.pushReplacement(
       context,
@@ -47,6 +51,10 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
     );
   }
 
+  /// 위젯 트리의 최상위 레이아웃을 구성함.
+  /// 
+  /// - [context]: 빌드 컨텍스트.
+  /// - 반환값: 전체 화면 구성을 담은 [Scaffold].
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -57,7 +65,6 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
             _buildAppBar(),
             Expanded(
               child: SingleChildScrollView(
-                // 좌우 여백을 넓혀 카드의 전체적인 크기감을 줄임
                 padding: const EdgeInsets.symmetric(horizontal: 30),
                 child: Column(
                   children: [
@@ -78,6 +85,8 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
   }
 
   /// 상단 앱바 형태의 헤더 영역을 생성함.
+  /// 
+  /// - 반환값: 뒤로가기 버튼과 제목이 포함된 [Container].
   Widget _buildAppBar() {
     return Container(
       height: 60,
@@ -104,6 +113,8 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
   }
 
   /// 화면 상단 안내 문구를 생성함.
+  /// 
+  /// - 반환값: 서비스 안내 텍스트가 포함된 [Text].
   Widget _buildDescription() {
     return const Text(
       '관심있는 여행 스타일을 선택해주세요\n(복수 선택 가능)',
@@ -118,16 +129,18 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
   }
 
   /// 스타일 선택 카드로 구성된 그리드를 생성함.
+  /// 
+  /// - 반환값: 2열 구조의 스타일 선택 그리드([GridView]).
   Widget _buildOptionGrid() {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _options.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2, // 2열 유지
+        crossAxisCount: 2,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 2.1, // ✨ 세로 높이를 낮춰서 카드를 더 작고 납작하게 만듦
+        childAspectRatio: 2.1,
       ),
       itemBuilder: (context, index) {
         final item = _options[index];
@@ -146,7 +159,6 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
                 width: 1.5,
               ),
             ),
-            // ✨ 아이콘과 글자를 가로로 배치하고 중앙 정렬
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center, 
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -155,7 +167,7 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
                   item['icon']!,
                   style: const TextStyle(fontSize: 20),
                 ),
-                const SizedBox(width: 8), // 아이콘과 글자 사이의 일정한 간격
+                const SizedBox(width: 8),
                 Text(
                   label,
                   style: TextStyle(
@@ -174,6 +186,8 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
   }
 
   /// 하단 액션 버튼 영역을 생성함.
+  /// 
+  /// - 반환값: 시작하기 및 건너뛰기 버튼이 포함된 [Container].
   Widget _buildFooter() {
     final hasSelection = _selectedStyles.isNotEmpty;
     return Container(
@@ -206,6 +220,13 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
   }
 
   /// 재사용 가능한 하단 버튼 위젯을 생성함.
+  ///
+  /// - [label]: 버튼에 표시될 텍스트.
+  /// - [color]: 버튼 배경 색상.
+  /// - [textColor]: 버튼 텍스트 색상.
+  /// - [isEnabled]: 버튼 활성화 여부.
+  /// - [onPressed]: 버튼 클릭 시 실행할 콜백 함수.
+  /// - 반환값: 구성된 디자인의 버튼 위젯.
   Widget _buildButton({
     required String label,
     required Color color,
