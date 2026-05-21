@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 
-/// 
-/// 로그인, 프로필 설정, 선호 스타일 조사를 마친 유저가 도달하는 최종 목적지임.
+/// 회원 가입 및 정보 설정 수집 절차 완료 후 최종 착륙 대시보드 화면.
 class MainHomeScreen extends StatelessWidget {
-  /// [MainHomeScreen] 위젯의 생성자.
+  /// [MainHomeScreen] 생성자.
   const MainHomeScreen({super.key});
 
-  /// 홈 화면의 인터페이스를 빌드함.
-  /// 
-  /// - [context]: 위젯 트리의 빌드 컨텍스트.
-  /// - 반환값: 그라데이션 배경과 환영 메시지가 포함된 [Scaffold].
+  /// 홈 코어 정보 레이아웃 가공 조립 빌드.
+  ///
+  /// - [context]: 위젯 트리 빌드 컨텍스트 메타데이터.
+  /// - 반환값: 중앙 텍스트 컨테이너 정렬 포함 [Scaffold] 위젯.
   @override
   Widget build(BuildContext context) {
     return Scaffold(

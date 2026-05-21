@@ -1,48 +1,48 @@
 import 'package:flutter/material.dart';
-import 'profile_setup_screen.dart';
+import '../../profile/presentation/profile_setup_screen.dart';
 
-/// 회원가입 과정을 단계별(Step)로 관리하는 화면 위젯.
+/// 회원가입 내부 단계를 순차 관리하는 시퀀스 위젯.
 class SignupScreen extends StatefulWidget {
-  /// [SignupScreen] 위젯의 생성자.
+  /// [SignupScreen] 생성자.
   const SignupScreen({super.key});
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
 }
 
-/// [SignupScreen]의 상태 관리 및 단계별 로직을 처리하는 클래스.
+/// SignupScreen 분기 및 정규식 처리 클래스.
 class _SignupScreenState extends State<SignupScreen> {
-  /// 현재 진행 중인 회원가입 단계 인덱스 (0~3)
+  /// 현재 시퀀스 진행값
   int _currentStep = 0;
 
-  /// 약관 동의 및 인증 상태 관리 변수
+  /// 동의 및 검증 제어 플래그 변수
   bool _isServiceAgreed = false;
   bool _isPrivacyAgreed = false;
   bool _isMarketingAgreed = false;
   bool _isEmailSent = false;
 
-  /// 각 입력 필드 제어를 위한 컨트롤러 객체
+  /// 각 단계별 데이터를 수집할 전용 텍스트 필드 제어 장치
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _pwController = TextEditingController();
   final TextEditingController _pwConfirmController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
 
-  /// 버튼 애니메이션용 배율 상태 값
+  /// 인터랙션 전용 컴포넌트 배율 제어값
   double _buttonScale = 1.0;
 
-  /// 정규표현식을 사용하여 이메일 형식의 유효성을 검사함.
+  /// 포맷팅 문자 규격을 통한 타겟 주소 데이터 적합성 검증.
   ///
-  /// - [email]: 검사할 이메일 문자열.
-  /// - 반환값: 유효한 형식이면 true, 아니면 false 반환.
+  /// - [email]: 대상 문자열 주소 정보.
+  /// - 반환값: 패스 여부 (bool).
   bool _isValidEmail(String email) {
     return RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+")
         .hasMatch(email);
   }
 
-  /// 현재 단계에서 다음 단계로 넘어가기 위한 필수 조건 충족 여부를 확인함.
+  /// 활성화 필수 조건 테이블 충족 여부 연산 반환.
   ///
-  /// - 반환값: 다음 단계 버튼 활성화 여부 (bool).
+  /// - 반환값: 버튼 개방 판단 여부 플래그 (bool).
   bool get _isNextEnabled {
     switch (_currentStep) {
       case 0: return _isServiceAgreed && _isPrivacyAgreed;
@@ -53,7 +53,7 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  /// 다음 회원가입 단계로 이동하거나, 마지막 단계일 경우 프로필 설정 화면으로 전환함.
+  /// 회원가입 하위 다음 단계로 라우팅 제어 또는 최종 완성 화면 교체 전환.
   void _nextStep() {
     if (_currentStep < 3) {
       setState(() => _currentStep++);
@@ -65,7 +65,7 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  /// 이전 단계로 돌아가거나, 첫 번째 단계일 경우 현재 화면을 종료함.
+  /// 이전 시퀀스 단계 복귀 처리 및 첫 노출 시 이탈 팝 아웃 수행.
   void _prevStep() {
     if (_currentStep > 0) {
       setState(() => _currentStep--);
@@ -74,7 +74,10 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  /// 전체적인 화면 레이아웃과 배경 그라데이션을 구성함.
+  /// 메인 가입 레이아웃 및 폼 프레임워크 빌드.
+  ///
+  /// - [context]: 빌드 컨텍스트 메타데이터.
+  /// - 반환값: 안전 영역 보정 적용 [Scaffold] 위젯.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -111,7 +114,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 뒤로가기 버튼이 포함된 상단 바를 생성함.
+  /// 단일 네비게이션 제어 상단 바 영역 생성.
   Widget _buildTopBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -126,7 +129,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 앱 로고 및 가입 안내 문구 헤더를 생성함.
+  /// 전면 타이틀 텍스트 조합 객체 생성.
   Widget _buildHeader() {
     return const Column(
       children: [
@@ -149,7 +152,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 현재 진행 단계를 시각적으로 표시하는 인디케이터를 생성함.
+  /// 상태 애니메이션 포함 진행 바 래퍼 생성.
   Widget _buildStepIndicator() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -169,7 +172,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 각 단계별 입력 폼을 포함하는 흰색 카드 배경 위젯을 생성함.
+  /// 동적 인덱스 스택 바인딩 카드 베이스 레이어 구현.
   Widget _buildContentCard() {
     return Container(
       width: double.infinity,
@@ -196,7 +199,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// [Step 0] 이용약관 동의 화면을 구성함.
+  /// 시퀀스 0단계 약관 동의 뷰 조립.
   Widget _stepTerms() {
     bool isAllAgreed = _isServiceAgreed && _isPrivacyAgreed && _isMarketingAgreed;
     return Column(
@@ -215,14 +218,14 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 약관 항목의 행(Row) 위젯을 생성함.
+  /// 약관 로우 컴포넌트 단위 생성 빌더.
   ///
-  /// - [title]: 항목 제목.
-  /// - [value]: 현재 체크 상태.
-  /// - [onChanged]: 상태 변경 시 호출할 콜백.
-  /// - [isBox]: 배경 박스 적용 여부.
-  /// - [tag]: '필수' 또는 '선택' 표시 태그.
-  /// - [sub]: 항목에 대한 부연 설명.
+  /// - [title]: 동의 라벨명.
+  /// - [value]: 연동 체크박스 상태 데이터 변수.
+  /// - [onChanged]: 값 변경 스위칭 감지 핸들러 콜백 함수.
+  /// - [isBox]: 전용 테두리 수용 박스 활성화 여부.
+  /// - [tag]: 노출 조건 태그 명칭.
+  /// - [sub]: 서브 하단 부가 해설 문구.
   Widget _buildTermsRow(String title, bool value, Function(bool?) onChanged, {bool isBox = false, String? tag, String? sub}) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 5),
@@ -262,7 +265,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// [Step 1] 아이디 입력 화면을 구성함.
+  /// 시퀀스 1단계 유저 식별자 인풋 폼 세트 생성.
   Widget _stepInputId() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -276,7 +279,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// [Step 2] 비밀번호 설정 및 확인 화면을 구성함.
+  /// 시퀀스 2단계 인증 암호 구조 수립 폼 레이아웃 조립.
   Widget _stepInputPw() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,7 +297,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// [Step 3] 이메일 주소 입력 및 인증번호 발송 화면을 구성함.
+  /// 시퀀스 3단계 연락처 이메일 발송 검증 제어 영역 빌드.
   Widget _stepEmail() {
     bool isValid = _isValidEmail(_emailController.text);
     return Column(
@@ -321,10 +324,10 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 폼 내부에 위치하는 보조 버튼(인증번호 전송 등)을 생성함.
+  /// 부가 액션 전용 소형 고정 스퀘어 버튼 컴포넌트 빌드.
   ///
-  /// - [label]: 버튼 텍스트.
-  /// - [onPressed]: 버튼 클릭 시 콜백.
+  /// - [label]: 버튼 바인딩용 스트링 문자 정보.
+  /// - [onPressed]: 호출 대상 제어 로직.
   Widget _smallButton(String label, VoidCallback onPressed) {
     return SizedBox(
       height: 48,
@@ -336,7 +339,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 다음 단계 이동을 처리하며 애니메이션 효과가 적용된 메인 액션 버튼을 생성함.
+  /// 배율 물리 스케일 연동 조건부 개방 진행 버튼 객체 생성.
   Widget _buildAnimatedNextButton() {
     return GestureDetector(
       onTapDown: (_) => setState(() => _buttonScale = 0.96),
@@ -354,7 +357,7 @@ class _SignupScreenState extends State<SignupScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(30),
-              boxShadow: _isNextEnabled ? [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 10, offset: const Offset(0, 4))] : [],
+              boxShadow: _isNextEnabled ? [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 4))] : [],
             ),
             child: Center(
               child: Text(
@@ -369,18 +372,18 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 }
 
-/// 회원가입 폼 전용으로 커스텀된 공용 텍스트 필드 위젯.
+/// 공용 특화 커스텀 텍스트 인풋 위젯 정의.
 class _CustomTextField extends StatelessWidget {
-  /// 입력란 힌트 텍스트
+  /// 수용 힌트 구문 정보 명칭
   final String hint;
-  /// 비밀번호 모드(숨김 처리) 활성화 여부
+  /// 암호화 보안 속성 플래그 변수
   final bool isPw;
-  /// 텍스트 입력 제어 컨트롤러
+  /// 연동 전용 제어 컨트롤러
   final TextEditingController? controller;
-  /// 텍스트 변경 시 호출되는 이벤트 함수
+  /// 내부 문자 변경 탐지 실행 함수 콜백
   final Function(String)? onChanged;
 
-  /// [_CustomTextField] 위젯의 생성자.
+  /// [_CustomTextField] 생성자.
   const _CustomTextField({required this.hint, this.isPw = false, this.controller, this.onChanged});
 
   @override
