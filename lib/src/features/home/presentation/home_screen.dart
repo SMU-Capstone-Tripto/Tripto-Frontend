@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tripto/src/constants/app_theme.dart';
@@ -134,7 +133,8 @@ class _HomeHeader extends StatelessWidget {
                 onPressed: () {
                   // TODO: 알림 화면
                 },
-                icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                icon: const Icon(Icons.notifications_outlined,
+                    color: Colors.white),
                 style: IconButton.styleFrom(
                   backgroundColor: Colors.white.withOpacity(0.15),
                   shape: const CircleBorder(),
