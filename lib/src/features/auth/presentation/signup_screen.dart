@@ -1,71 +1,113 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../profile/presentation/profile_setup_screen.dart';
+import '../../../core/auth_storage.dart'; 
 
-/// 회원가입 내부 단계를 순차 관리하는 시퀀스 위젯.
 class SignupScreen extends StatefulWidget {
-  /// [SignupScreen] 생성자.
   const SignupScreen({super.key});
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
 }
 
-/// SignupScreen 분기 및 정규식 처리 클래스.
 class _SignupScreenState extends State<SignupScreen> {
-  /// 현재 시퀀스 진행값
   int _currentStep = 0;
-
-  /// 동의 및 검증 제어 플래그 변수
   bool _isServiceAgreed = false;
   bool _isPrivacyAgreed = false;
   bool _isMarketingAgreed = false;
   bool _isEmailSent = false;
+  bool _isLoading = false; 
 
-  /// 각 단계별 데이터를 수집할 전용 텍스트 필드 제어 장치
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _pwController = TextEditingController();
   final TextEditingController _pwConfirmController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
 
-  /// 인터랙션 전용 컴포넌트 배율 제어값
   double _buttonScale = 1.0;
 
-  /// 포맷팅 문자 규격을 통한 타겟 주소 데이터 적합성 검증.
-  ///
-  /// - [email]: 대상 문자열 주소 정보.
-  /// - 반환값: 패스 여부 (bool).
   bool _isValidEmail(String email) {
     return RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+")
         .hasMatch(email);
   }
 
-  /// 활성화 필수 조건 테이블 충족 여부 연산 반환.
-  ///
-  /// - 반환값: 버튼 개방 판단 여부 플래그 (bool).
+  bool _isValidPassword(String password) {
+    final regex = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\W).{8,}$');
+    return regex.hasMatch(password);
+  }
+
   bool get _isNextEnabled {
     switch (_currentStep) {
       case 0: return _isServiceAgreed && _isPrivacyAgreed;
-      case 1: return _idController.text.length >= 4;
-      case 2: return _pwController.text.length >= 6 && _pwController.text == _pwConfirmController.text;
+      case 1: return _idController.text.length >= 4 && _isValidEmail(_idController.text.trim());
+      case 2: return _isValidPassword(_pwController.text) && _pwController.text == _pwConfirmController.text;
       case 3: return _isEmailSent && _codeController.text.isNotEmpty;
       default: return false;
     }
   }
 
-  /// 회원가입 하위 다음 단계로 라우팅 제어 또는 최종 완성 화면 교체 전환.
+  Future<void> _sendVerificationCode() async {
+    final email = _emailController.text.trim();
+    if (!_isValidEmail(email)) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse('${AuthStorage.baseUrl}/auth/email/send-code'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        setState(() => _isEmailSent = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('인증 코드가 이메일로 발송되었습니다.')),
+        );
+      } else {
+        final err = jsonDecode(response.body);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(err['detail'] ?? '코드 발송에 실패했습니다.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('서버와 통신할 수 없습니다.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   void _nextStep() {
     if (_currentStep < 3) {
-      setState(() => _currentStep++);
+      setState(() {
+        _currentStep++;
+        if (_currentStep == 3) {
+          _emailController.text = _idController.text.trim();
+        }
+      });
     } else {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
+        MaterialPageRoute(
+          builder: (context) => ProfileSetupScreen(
+            email: _idController.text.trim(),
+            password: _pwController.text.trim(),
+            verificationCode: _codeController.text.trim(),
+            backupEmail: _emailController.text.trim(),
+          ),
+        ),
       );
     }
   }
 
-  /// 이전 시퀀스 단계 복귀 처리 및 첫 노출 시 이탈 팝 아웃 수행.
   void _prevStep() {
     if (_currentStep > 0) {
       setState(() => _currentStep--);
@@ -74,10 +116,71 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  /// 메인 가입 레이아웃 및 폼 프레임워크 빌드.
-  ///
-  /// - [context]: 빌드 컨텍스트 메타데이터.
-  /// - 반환값: 안전 영역 보정 적용 [Scaffold] 위젯.
+  // 깔끔한 화이트 톤의 약관 상세 바텀 시트
+  void _showTermsDetail(String title, String content) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white, 
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          height: MediaQuery.of(context).size.height * 0.6, 
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFF1E1E1E), 
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Pretendard',
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Color(0xFF757575)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(color: Color(0xFFEEEEEE), height: 20, thickness: 1),
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Text(
+                    content,
+                    style: const TextStyle(
+                      color: Color(0xFF4A4A4A), 
+                      fontSize: 14,
+                      height: 1.6,
+                      fontFamily: 'Pretendard',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _idController.dispose();
+    _pwController.dispose();
+    _pwConfirmController.dispose();
+    _emailController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -93,20 +196,26 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         ),
         child: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              _buildTopBar(),
-              const SizedBox(height: 5),
-              _buildHeader(),
-              const SizedBox(height: 15),
-              _buildStepIndicator(),
-              const SizedBox(height: 20),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 35),
-                  child: _buildContentCard(),
-                ),
+              Column(
+                children: [
+                  _buildTopBar(),
+                  const SizedBox(height: 5),
+                  _buildHeader(),
+                  const SizedBox(height: 15),
+                  _buildStepIndicator(),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 35),
+                      child: _buildContentCard(),
+                    ),
+                  ),
+                ],
               ),
+              if (_isLoading)
+                const Center(child: CircularProgressIndicator(color: Colors.white)),
             ],
           ),
         ),
@@ -114,7 +223,6 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 단일 네비게이션 제어 상단 바 영역 생성.
   Widget _buildTopBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -129,7 +237,6 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 전면 타이틀 텍스트 조합 객체 생성.
   Widget _buildHeader() {
     return const Column(
       children: [
@@ -152,7 +259,6 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 상태 애니메이션 포함 진행 바 래퍼 생성.
   Widget _buildStepIndicator() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -164,7 +270,7 @@ class _SignupScreenState extends State<SignupScreen> {
           width: isActive ? 50 : 30,
           height: 4,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: isActive ? 0.9 : 0.2),
+            color: Colors.white.withOpacity(isActive ? 0.9 : 0.2), 
             borderRadius: BorderRadius.circular(2),
           ),
         );
@@ -172,13 +278,12 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 동적 인덱스 스택 바인딩 카드 베이스 레이어 구현.
   Widget _buildContentCard() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
+        color: Colors.white.withOpacity(0.12), 
         borderRadius: BorderRadius.circular(28),
       ),
       child: Column(
@@ -186,9 +291,13 @@ class _SignupScreenState extends State<SignupScreen> {
           Expanded(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
-              child: IndexedStack(
-                index: _currentStep,
-                children: [ _stepTerms(), _stepInputId(), _stepInputPw(), _stepEmail() ],
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: IndexedStack(
+                  index: _currentStep,
+                  children: [ _stepTerms(), _stepInputId(), _stepInputPw(), _stepEmail() ],
+                ),
               ),
             ),
           ),
@@ -199,7 +308,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 시퀀스 0단계 약관 동의 뷰 조립.
+  // 표준 약관 본문 문구가 적용된 가입 동의 스텝
   Widget _stepTerms() {
     bool isAllAgreed = _isServiceAgreed && _isPrivacyAgreed && _isMarketingAgreed;
     return Column(
@@ -211,40 +320,84 @@ class _SignupScreenState extends State<SignupScreen> {
           setState(() { _isServiceAgreed = _isPrivacyAgreed = _isMarketingAgreed = val!; });
         }, isBox: true),
         const Divider(color: Colors.white24, height: 35),
-        _buildTermsRow('서비스 이용동의', _isServiceAgreed, (val) => setState(() => _isServiceAgreed = val!), tag: '필수'),
-        _buildTermsRow('개인정보 수집 및 이용동의', _isPrivacyAgreed, (val) => setState(() => _isPrivacyAgreed = val!), tag: '필수'),
-        _buildTermsRow('마케팅 활용 동의', _isMarketingAgreed, (val) => setState(() => _isMarketingAgreed = val!), tag: '선택', sub: '다양한 프로모션에 활용됩니다.'),
+        _buildTermsRow(
+          '서비스 이용동의', 
+          _isServiceAgreed, 
+          (val) => setState(() => _isServiceAgreed = val!), 
+          tag: '필수',
+          onDetailPressed: () => _showTermsDetail(
+            '서비스 이용동의', 
+            '제1조 (목적)\n본 약관은 TRIPTO(이하 "회사")가 제공하는 어플리케이션 및 관련 제반 서비스(이하 "서비스")를 이용함에 있어, 회사와 회원 간의 권리, 의무 및 책임사항, 서비스 이용 조건 및 절차 등 기본적인 사항을 규정함을 목적으로 합니다.\n\n제2조 (회사의 의무)\n1. 회사는 본 약관이 정하는 바에 따라 지속적이고 안정적인 서비스를 제공하는 데 최선을 다합니다.\n2. 회사는 서비스 오류나 장애가 발생할 경우 지체 없이 이를 수리 또는 복구합니다.\n\n제3조 (회원의 의무)\n1. 회원은 관계 법령, 본 약관의 규정 및 서비스 이용 안내를 준수하여야 합니다.\n2. 회원은 다음 각 호의 행위를 하여서는 안 됩니다.\n- 신청 또는 변경 시 허위 내용의 등록\n- 타인의 정보 도용\n- 회사가 정한 정보 이외의 정보(컴퓨터 프로그램 등)의 송신 또는 게시\n- 회사 및 기타 제3자의 저작권 등 지적재산권에 대한 침해\n\n제4조 (서비스의 중단 및 면책)\n1. 회사는 컴퓨터 등 정보통신설비의 보수점검, 교체 및 통신두절 등의 고지된 사유가 발생한 경우 서비스 제공을 일시적으로 중단할 수 있습니다.\n2. 천재지변 또는 이에 준하는 불가항력으로 인하여 서비스를 제공할 수 없는 경우 회사는 서비스 제공에 관한 책임이 면제됩니다.'
+          ),
+        ),
+        _buildTermsRow(
+          '개인정보 수집 및 이용동의', 
+          _isPrivacyAgreed, 
+          (val) => setState(() => _isPrivacyAgreed = val!), 
+          tag: '필수',
+          onDetailPressed: () => _showTermsDetail(
+            '개인정보 수집 및 이용동의', 
+            'TRIPTO는 회원가입 및 원활한 서비스 제공을 위해 아래와 같이 최소한의 개인정보를 수집 및 이용합니다.\n\n1. 수집 및 이용 항목\n- 필수항목: 이메일 주소, 비밀번호, 본인인증 코드\n\n2. 수집 및 이용 목적\n- 회원 가입 의사 확인, 서비스 이용에 따른 본인 식별 및 인증, 회원 자격 유지 및 관리, 고지사항 전달, 부정 이용 방지\n\n3. 보유 및 이용 기간\n- 회원의 개인정보는 회원 탈퇴 시까지 보유 및 이용하며, 탈퇴 시 지체 없이 파기합니다.\n- 단, 관계 법령의 규정에 의하여 보존할 필요가 있는 경우 법령에서 정한 일정 기간 동안 회원 정보를 보관합니다.'
+          ),
+        ),
+        _buildTermsRow(
+          '마케팅 활용 동의', 
+          _isMarketingAgreed, 
+          (val) => setState(() => _isMarketingAgreed = val!), 
+          tag: '선택', 
+          sub: '다양한 프로모션에 활용됩니다.',
+          onDetailPressed: () => _showTermsDetail(
+            '마케팅 활용 동의', 
+            '1. 수집 및 이용 목적\n- TRIPTO가 제공하는 이벤트 정보, 할인 혜택, 맞춤형 추천 서비스 안내 등 광고성 정보 전송 및 마케팅 활동에 활용됩니다.\n\n2. 수집 항목\n- 이메일 주소\n\n3. 보유 및 이용 기간\n- 마케팅 동의 철회 시 또는 회원 탈퇴 시까지\n\n4. 동의 거부 권리 및 불이익\n- 귀하는 본 마케팅 활용 동의를 거부할 권리가 있습니다. 거부 시에도 서비스 이용은 가능하나, 회사가 제공하는 이벤트 혜택 및 맞춤형 추천 알림 서비스 등의 제한을 받을 수 있습니다.'
+          ),
+        ),
       ],
     );
   }
 
-  /// 약관 로우 컴포넌트 단위 생성 빌더.
-  ///
-  /// - [title]: 동의 라벨명.
-  /// - [value]: 연동 체크박스 상태 데이터 변수.
-  /// - [onChanged]: 값 변경 스위칭 감지 핸들러 콜백 함수.
-  /// - [isBox]: 전용 테두리 수용 박스 활성화 여부.
-  /// - [tag]: 노출 조건 태그 명칭.
-  /// - [sub]: 서브 하단 부가 해설 문구.
-  Widget _buildTermsRow(String title, bool value, Function(bool?) onChanged, {bool isBox = false, String? tag, String? sub}) {
+  // 터치 영역이 개선되고 화살표 아이콘이 추가된 공통 약관 위젯
+  Widget _buildTermsRow(
+    String title, 
+    bool value, 
+    Function(bool?) onChanged, {
+    bool isBox = false, 
+    String? tag, 
+    String? sub,
+    VoidCallback? onDetailPressed, 
+  }) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 5),
       padding: isBox ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12) : null,
-      decoration: isBox ? BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)) : null,
+      decoration: isBox ? BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(12)) : null, 
       child: Row(
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(color: Colors.white, fontSize: isBox ? 16 : 14, fontWeight: isBox ? FontWeight.bold : FontWeight.normal, fontFamily: 'Pretendard')),
-                if (sub != null) Text(sub, style: const TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'Pretendard')),
-              ],
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onDetailPressed, 
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: TextStyle(color: Colors.white, fontSize: isBox ? 16 : 14, fontWeight: isBox ? FontWeight.bold : FontWeight.normal, fontFamily: 'Pretendard')),
+                        if (sub != null) Text(sub, style: const TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'Pretendard')),
+                      ],
+                    ),
+                  ),
+                  if (onDetailPressed != null) 
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(Icons.arrow_forward_ios, color: Colors.white38, size: 14),
+                    ),
+                ],
+              ),
             ),
           ),
           if (tag != null)
             Container(
-              margin: const EdgeInsets.only(right: 10),
+              margin: const EdgeInsets.only(left: 8, right: 10),
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(4)),
               child: Text(tag, style: const TextStyle(color: Colors.white60, fontSize: 10, fontFamily: 'Pretendard')),
@@ -265,30 +418,32 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 시퀀스 1단계 유저 식별자 인풋 폼 세트 생성.
   Widget _stepInputId() {
+    bool isValid = _isValidEmail(_idController.text.trim());
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('아이디', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Pretendard')),
+        const Text('아이디(이메일 주소)', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Pretendard')),
         const SizedBox(height: 25),
-        _CustomTextField(controller: _idController, hint: '아이디를 입력해주세요', onChanged: (v) => setState(() {})),
-        if (_idController.text.isNotEmpty && _idController.text.length < 4)
-          const Padding(padding: EdgeInsets.only(top: 8), child: Text('4자 이상 입력해주세요.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontFamily: 'Pretendard'))),
+        _CustomTextField(controller: _idController, hint: 'example@tripto.com', onChanged: (v) => setState(() {})),
+        if (_idController.text.isNotEmpty && !isValid)
+          const Padding(padding: EdgeInsets.only(top: 8), child: Text('올바른 이메일 형식으로 입력해주세요.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontFamily: 'Pretendard'))),
       ],
     );
   }
 
-  /// 시퀀스 2단계 인증 암호 구조 수립 폼 레이아웃 조립.
   Widget _stepInputPw() {
+    bool isPwValid = _isValidPassword(_pwController.text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('비밀번호', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Pretendard')),
-        const SizedBox(height: 25),
+        const SizedBox(height: 12),
+        const Text('※ 대문자, 소문자, 특수문자 포함 8자 이상 필수', style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Pretendard')),
+        const SizedBox(height: 20),
         _CustomTextField(controller: _pwController, hint: '비밀번호를 입력해주세요', isPw: true, onChanged: (v) => setState(() {})),
-        if (_pwController.text.isNotEmpty && _pwController.text.length < 6)
-          const Padding(padding: EdgeInsets.only(top: 8), child: Text('비밀번호는 6자리 이상 입력해주세요.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontFamily: 'Pretendard'))),
+        if (_pwController.text.isNotEmpty && !isPwValid)
+          const Padding(padding: EdgeInsets.only(top: 8), child: Text('규칙에 맞지 않는 비밀번호입니다.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontFamily: 'Pretendard'))),
         const SizedBox(height: 15),
         _CustomTextField(controller: _pwConfirmController, hint: '비밀번호를 확인해주세요', isPw: true, onChanged: (v) => setState(() {})),
         if (_pwConfirmController.text.isNotEmpty && _pwController.text != _pwConfirmController.text)
@@ -297,9 +452,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 시퀀스 3단계 연락처 이메일 발송 검증 제어 영역 빌드.
   Widget _stepEmail() {
-    bool isValid = _isValidEmail(_emailController.text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -307,27 +460,21 @@ class _SignupScreenState extends State<SignupScreen> {
         const SizedBox(height: 25),
         Row(
           children: [
-            Expanded(child: _CustomTextField(controller: _emailController, hint: '이메일을 입력해주세요', onChanged: (v) => setState(() {}))),
+            Expanded(child: _CustomTextField(controller: _emailController, hint: '인증받을 이메일 주소', readOnly: true, onChanged: (v) => setState(() {}))),
             const SizedBox(width: 8),
-            _smallButton(_isEmailSent ? '재전송' : '전송', () {
-              if (isValid) setState(() => _isEmailSent = true);
-            }),
+            _smallButton(_isEmailSent ? '재전송' : '인증 요청', () => _sendVerificationCode()),
           ],
         ),
-        if (_emailController.text.isNotEmpty && !isValid)
-          const Padding(padding: EdgeInsets.only(top: 8), child: Text('이메일 형식에 맞게 입력해주세요.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontFamily: 'Pretendard'))),
         if (_isEmailSent) ...[
-          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('인증번호가 발송되었습니다.', style: TextStyle(color: Colors.cyanAccent, fontSize: 12, fontWeight: FontWeight.w500, fontFamily: 'Pretendard'))),
-          _CustomTextField(controller: _codeController, hint: '인증번호를 입력해주세요', onChanged: (v) => setState(() {})),
+          const SizedBox(height: 20),
+          const Text('인증번호 입력', style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Pretendard', fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          _CustomTextField(controller: _codeController, hint: '인증번호 6자리 입력', onChanged: (v) => setState(() {})),
         ],
       ],
     );
   }
 
-  /// 부가 액션 전용 소형 고정 스퀘어 버튼 컴포넌트 빌드.
-  ///
-  /// - [label]: 버튼 바인딩용 스트링 문자 정보.
-  /// - [onPressed]: 호출 대상 제어 로직.
   Widget _smallButton(String label, VoidCallback onPressed) {
     return SizedBox(
       height: 48,
@@ -339,13 +486,12 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// 배율 물리 스케일 연동 조건부 개방 진행 버튼 객체 생성.
   Widget _buildAnimatedNextButton() {
     return GestureDetector(
       onTapDown: (_) => setState(() => _buttonScale = 0.96),
       onTapUp: (_) => setState(() => _buttonScale = 1.0),
       onTapCancel: () => setState(() => _buttonScale = 1.0),
-      onTap: _isNextEnabled ? _nextStep : null,
+      onTap: _isNextEnabled ? () => _nextStep() : null, 
       child: AnimatedScale(
         scale: _buttonScale,
         duration: const Duration(milliseconds: 100),
@@ -359,10 +505,10 @@ class _SignupScreenState extends State<SignupScreen> {
               borderRadius: BorderRadius.circular(30),
               boxShadow: _isNextEnabled ? [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 4))] : [],
             ),
-            child: Center(
+            child: const Center(
               child: Text(
-                _currentStep == 3 ? '가입 완료' : '다음 단계로', 
-                style: const TextStyle(color: Color(0xFF4A34A4), fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Pretendard')
+                '다음 단계로', 
+                style: TextStyle(color: Color(0xFF4A34A4), fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Pretendard')
               )
             ),
           ),
@@ -372,30 +518,26 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 }
 
-/// 공용 특화 커스텀 텍스트 인풋 위젯 정의.
 class _CustomTextField extends StatelessWidget {
-  /// 수용 힌트 구문 정보 명칭
   final String hint;
-  /// 암호화 보안 속성 플래그 변수
   final bool isPw;
-  /// 연동 전용 제어 컨트롤러
+  final bool readOnly; 
   final TextEditingController? controller;
-  /// 내부 문자 변경 탐지 실행 함수 콜백
   final Function(String)? onChanged;
 
-  /// [_CustomTextField] 생성자.
-  const _CustomTextField({required this.hint, this.isPw = false, this.controller, this.onChanged});
+  const _CustomTextField({required this.hint, this.isPw = false, this.readOnly = false, this.controller, this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white12)),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white12)), 
       child: TextField(
         controller: controller,
         onChanged: onChanged,
         obscureText: isPw,
-        style: const TextStyle(color: Colors.white, fontFamily: 'Pretendard'),
+        readOnly: readOnly, 
+        style: TextStyle(color: readOnly ? Colors.white60 : Colors.white, fontFamily: 'Pretendard'),
         decoration: InputDecoration(hintText: hint, hintStyle: const TextStyle(color: Colors.white24, fontSize: 14, fontFamily: 'Pretendard'), border: InputBorder.none),
       ),
     );

@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // [추가] kIsWeb(웹 여부 확인) 기능을 쓰기 위해 필요합니다.
+import 'dart:convert'; 
 import 'signup_screen.dart';
-import '../../home/presentation/main_home_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'forgot_password_screen.dart'; 
+import '../../home/presentation/main_home_screen.dart'; 
+import '../../profile/presentation/profile_setup_screen.dart'; 
+import 'package:webview_flutter/webview_flutter.dart'; 
+import 'package:http/http.dart' as http; 
+import '../../../../src/core/auth_storage.dart'; 
 
-/// 사용자 로그인 화면 위젯.
 class LoginScreen extends StatefulWidget {
-  /// [LoginScreen] 생성자.
   const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-/// LoginScreen 상태 및 입력 로직 제어 클래스.
 class _LoginScreenState extends State<LoginScreen> {
   bool _isObscured = true;
   bool _isIdSaved = false;
+  bool _isLoading = false; 
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _pwController = TextEditingController();
 
@@ -25,29 +27,97 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _goToMain() {
+    if (!mounted) return; 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const MainHomeScreen()),
+      MaterialPageRoute(builder: (context) => const MainHomeScreen()), 
     );
   }
 
-  /// 외부 시스템 브라우저를 개방하여 소셜 로그인 인증을 수행함.
-  Future<void> _openSocialLogin(String url) async {
-    final Uri uri = Uri.parse(url);
-    
+  Future<void> _handleLocalLogin() async {
+    final email = _idController.text.trim();
+    final password = _pwController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('아이디와 비밀번호를 모두 입력해 주세요.')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
     try {
-      // [최종 솔루션] 웹이든 모바일이든 무조건 LaunchMode.externalApplication(새 탭/외부 브라우저)으로 엽니다.
-      // 이렇게 하면 플러터 웹이 요청을 가로채지 못하므로 무한 로딩이 무조건 깨집니다.
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final response = await http.post(
+        Uri.parse('${AuthStorage.baseUrl}/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email, 
+          'password': password,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = jsonDecode(response.body);
+        
+        AuthStorage.accessToken = responseData['access_token'];
+        AuthStorage.refreshToken = responseData['refresh_token'];
+
+        _goToMain();
       } else {
-        throw '브라우저를 열 수 없습니다.';
+        final errorData = jsonDecode(response.body);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorData['detail'] ?? '로그인 정보가 일치하지 않습니다.')),
+        );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('오류 발생: $e')),
+        const SnackBar(content: Text('서버 통신 중 오류가 발생했습니다.')),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
+
+  void _openSocialLogin(String url) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SocialLoginWebView(
+          initialUrl: url,
+          onTokenReceived: (accessToken, refreshToken, email, isProfileComplete) {
+            AuthStorage.accessToken = accessToken;
+            AuthStorage.refreshToken = refreshToken;
+
+            if (mounted) {
+              // 🛠️ 정밀 필터링: 이미 닉네임 작성을 마친 기존 유저라면 메인 홈으로 바로 진입!
+              if (isProfileComplete) {
+                _goToMain();
+              } else {
+                // 완전히 처음 가입된 소셜 유저인 경우에만 프로필 생성 창으로 이동
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfileSetupScreen(
+                      email: email,
+                      password: '',
+                      verificationCode: '',
+                      backupEmail: '',
+                      isSocial: true, 
+                    ),
+                  ),
+                );
+              }
+            }
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -64,102 +134,109 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 80),
-                  const Center(
-                    child: Text(
-                      'TRIPTO',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 40,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 70),
-                  _buildInputField(
-                    controller: _idController,
-                    label: '아이디 입력',
-                    icon: Icons.person_outline,
-                  ),
-                  const SizedBox(height: 15),
-                  _buildInputField(
-                    controller: _pwController,
-                    label: '비밀번호 입력',
-                    icon: Icons.lock_outline,
-                    isPassword: true,
-                    obscureText: _isObscured,
-                    onEyePressed: () =>
-                        setState(() => _isObscured = !_isObscured),
-                  ),
-                  const SizedBox(height: 15),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: _buildIdSaveCheckbox(),
-                  ),
-                  const SizedBox(height: 30),
-                  _buildActionButton(
-                    label: '로그인',
-                    onPressed: _goToMain,
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+          child: Stack(
+            children: [
+              SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTextButton('비밀번호 찾기', () {}),
-                      Container(
-                        width: 1,
-                        height: 12,
-                        color: Colors.white24,
-                        margin: const EdgeInsets.symmetric(horizontal: 10),
+                      const SizedBox(height: 80),
+                      const Center(
+                        child: Text(
+                          'TRIPTO',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 40,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2,
+                          ),
+                        ),
                       ),
-                      _buildTextButton(
-                        '회원가입',
-                        () => _navigateTo(const SignupScreen()),
+                      const SizedBox(height: 70),
+                      _buildInputField(
+                        controller: _idController,
+                        label: '아이디(이메일) 입력',
+                        icon: Icons.person_outline,
                       ),
+                      const SizedBox(height: 15),
+                      _buildInputField(
+                        controller: _pwController,
+                        label: '비밀번호 입력',
+                        icon: Icons.lock_outline,
+                        isPassword: true,
+                        obscureText: _isObscured,
+                        onEyePressed: () =>
+                            setState(() => _isObscured = !_isObscured),
+                      ),
+                      const SizedBox(height: 15),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: _buildIdSaveCheckbox(),
+                      ),
+                      const SizedBox(height: 30),
+                      _buildActionButton(
+                        label: '로그인',
+                        onPressed: _handleLocalLogin, 
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildTextButton(
+                            '비밀번호 찾기', 
+                            () => _navigateTo(const ForgotPasswordScreen()),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 12,
+                            color: Colors.white24,
+                            margin: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                          _buildTextButton(
+                            '회원가입',
+                            () => _navigateTo(const SignupScreen()),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 60),
+                      const Center(
+                        child: Text(
+                          'SNS 계정으로 간편 로그인하세요.',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                            fontFamily: 'Pretendard',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildSnsButton(
+                            'assets/images/kakao_logo.png',
+                            () => _openSocialLogin('${AuthStorage.baseUrl}/auth/kakao/login'),
+                          ),
+                          const SizedBox(width: 30),
+                          _buildSnsButton(
+                            'assets/images/google_logo.png',
+                            () => _openSocialLogin('${AuthStorage.baseUrl}/auth/google/login'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 50),
                     ],
                   ),
-                  const SizedBox(height: 60),
-                  const Center(
-                    child: Text(
-                      'SNS 계정으로 간편 로그인하세요.',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                        fontFamily: 'Pretendard',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // 카카오 로그인 버튼
-                      _buildSnsButton(
-                        'assets/images/kakao_logo.png',
-                        () => _openSocialLogin(
-                            'https://kauth.kakao.com/oauth/authorize?client_id=7999cdaddd8a1bc0df49b5c2906dfcf2&redirect_uri=http://localhost:8000/api/v1/auth/kakao/callback&response_type=code'),
-                      ),
-                      const SizedBox(width: 30),
-                      // 구글 로그인 버튼
-                      _buildSnsButton(
-                        'assets/images/google_logo.png',
-                        () => _openSocialLogin(
-                            'https://accounts.google.com/o/oauth2/v2/auth?client_id=YOUR_GOOGLE_CLIENT_ID_HERE&redirect_uri=http://localhost:8000/api/v1/auth/google/callback&response_type=code&scope=openid%20email%20profile'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 50),
-                ],
+                ),
               ),
-            ),
+              if (_isLoading)
+                const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+            ],
           ),
         ),
       ),
@@ -177,7 +254,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Container(
       height: 55,
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(51),
+        color: Colors.white.withOpacity(0.2), 
         borderRadius: BorderRadius.circular(30),
       ),
       child: Row(
@@ -198,7 +275,7 @@ class _LoginScreenState extends State<LoginScreen> {
               decoration: InputDecoration(
                 hintText: label,
                 hintStyle: TextStyle(
-                  color: Colors.white.withAlpha(127),
+                  color: Colors.white.withOpacity(0.5), 
                   fontFamily: 'Pretendard',
                   fontSize: 15,
                 ),
@@ -241,7 +318,7 @@ class _LoginScreenState extends State<LoginScreen> {
               height: 18,
               decoration: BoxDecoration(
                 color: _isIdSaved ? Colors.white : Colors.transparent,
-                border: Border.all(color: Colors.white.withAlpha(153)),
+                border: Border.all(color: Colors.white.withOpacity(0.6)), 
                 borderRadius: BorderRadius.circular(4),
               ),
               child: _isIdSaved
@@ -325,6 +402,117 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Icon(Icons.image, color: Colors.white),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class SocialLoginWebView extends StatefulWidget {
+  final String initialUrl;
+  final Function(String accessToken, String refreshToken, String email, bool isProfileComplete) onTokenReceived; 
+
+  const SocialLoginWebView({
+    super.key,
+    required this.initialUrl,
+    required this.onTokenReceived,
+  });
+
+  @override
+  State<SocialLoginWebView> createState() => _SocialLoginWebViewState();
+}
+
+class _SocialLoginWebViewState extends State<SocialLoginWebView> {
+  late final WebViewController _controller;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (String url) {
+            setState(() => _isLoading = true);
+          },
+          onPageFinished: (String url) async {
+            setState(() => _isLoading = false);
+
+            if (url.contains('/auth/kakao/callback') ||
+                url.contains('/auth/google/callback')) {
+              try {
+                final String rawHtml = await _controller
+                        .runJavaScriptReturningResult("document.body.innerText")
+                    as String;
+
+                String cleanJson = rawHtml.trim();
+                if (cleanJson.startsWith('"') && cleanJson.endsWith('"')) {
+                  cleanJson = cleanJson.substring(1, cleanJson.length - 1);
+                }
+                cleanJson = cleanJson.replaceAll('\\"', '"').replaceAll('\\\\', '\\');
+
+                final Map<String, dynamic> tokenData = jsonDecode(cleanJson);
+                final String? accessToken = tokenData['access_token'];
+                final String? refreshToken = tokenData['refresh_token'];
+
+                if (accessToken != null && refreshToken != null) {
+                  // 내 정보 가져오기
+                  final userRes = await http.get(
+                    Uri.parse('${AuthStorage.baseUrl}/auth/me'), //
+                    headers: {'Authorization': 'Bearer $accessToken'},
+                  );
+
+                  String userEmail = '';
+                  bool isProfileComplete = false;
+
+                  if (userRes.statusCode == 200) {
+                    final userData = jsonDecode(userRes.body);
+                    userEmail = userData['email'] ?? '';
+                    String nickname = userData['nickname'] ?? '';
+                    
+                    // ── 🛠️ 오류 해결 마스터 알고리즘 ──
+                    // 카카오 가입 시 백엔드에서 강제 부여하는 접두사인 "카카오유저" 문자열을 포함하고 있는지 체크합니다.
+                    // 만약 가입 후 프로필에서 자신의 진짜 고유 닉네임으로 한 번이라도 변경했다면 이 조건문을 통과하여 완료 상태로 인식합니다.
+                    if (nickname.isNotEmpty && !nickname.startsWith('카카오유저')) {
+                      isProfileComplete = true;
+                    }
+                  }
+
+                  if (mounted) Navigator.pop(context); 
+                  widget.onTokenReceived(accessToken, refreshToken, userEmail, isProfileComplete);
+                }
+              } catch (e) {
+                debugPrint("웹뷰 내부 토큰 데이터 파싱 실패 에러: $e");
+              }
+            }
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(widget.initialUrl));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('소셜 로그인',
+            style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 16,
+                fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: Stack(
+        children: [
+          WebViewWidget(controller: _controller),
+          if (_isLoading)
+            const Center(
+              child: CircularProgressIndicator(color: Color(0xFF8055FF)),
+            ),
+        ],
       ),
     );
   }

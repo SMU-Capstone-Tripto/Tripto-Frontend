@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../home/presentation/main_home_screen.dart';
+import '../../../../src/core/auth_storage.dart';
 
 /// 신규 가입 전용 유저 여행 성향 필터 지표 추출 위젯.
 class TravelStyleScreen extends StatefulWidget {
-  /// [TravelStyleScreen] 생성자.
   const TravelStyleScreen({super.key});
 
   @override
   State<TravelStyleScreen> createState() => _TravelStyleScreenState();
 }
 
-/// TravelStyleScreen 상태 노드 및 그리드 조립 제어 클래스.
 class _TravelStyleScreenState extends State<TravelStyleScreen> {
-  /// 중복 수용 차단 목적 컬렉션 구조 변수
   final Set<String> _selectedStyles = {};
+  bool _isLoading = false; 
 
-  /// 렌더링 대상 기초 메타데이터 배열
   final List<Map<String, String>> _options = [
     {'icon': '🏖️', 'label': '힐링'},
     {'icon': '🏙️', 'label': '감성'},
@@ -27,9 +27,6 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
     {'icon': '🏛️', 'label': '문화'},
   ];
 
-  /// 선택 집합 컬렉션 인덱스 데이터 동적 역전환 처리.
-  ///
-  /// - [label]: 갱신 조건 필터링 스트링 명칭 키 값.
   void _toggleStyle(String label) {
     setState(() {
       if (_selectedStyles.contains(label)) {
@@ -40,45 +37,82 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
     });
   }
 
-  /// 메인 전면 대시보드로 영구 라우트 대체 전환.
+  /// 내 정보 수정(PATCH /auth/me) API를 통한 취향 태그 데이터 영크 연동
+  Future<void> _saveStylesAndGoToMain(bool isSkip) async {
+    setState(() => _isLoading = true);
+
+    try {
+      List<String> dynamicTags = [];
+
+      if (!isSkip) {
+        dynamicTags = _selectedStyles.toList();
+      }
+
+      final response = await http.patch(
+        Uri.parse('${AuthStorage.baseUrl}/auth/me'),
+        headers: AuthStorage.authHeaders, 
+        body: jsonEncode({
+          if (!isSkip) 'tags': dynamicTags,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        _goToMain();
+      } else {
+        _goToMain();
+      }
+    } catch (e) {
+      _goToMain(); 
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   void _goToMain() {
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const MainHomeScreen()),
+      MaterialPageRoute(builder: (context) => const MainHomeScreen()), // MainHomeScreen으로 이동 변경
     );
   }
 
-  /// 취향 수집 레이아웃 뷰 가공 렌더링.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF2F2F2),
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            _buildAppBar(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 30),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 32),
-                    _buildDescription(),
-                    const SizedBox(height: 24),
-                    _buildOptionGrid(),
-                    const SizedBox(height: 32),
-                  ],
+            Column(
+              children: [
+                _buildAppBar(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 30),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 32),
+                        _buildDescription(),
+                        const SizedBox(height: 24),
+                        _buildOptionGrid(),
+                        const SizedBox(height: 32),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+                _buildFooter(),
+              ],
             ),
-            _buildFooter(),
+            if (_isLoading)
+              const Center(child: CircularProgressIndicator(color: Color(0xFF6241D9))),
           ],
         ),
       ),
     );
   }
 
-  /// 독립 유닛 타입 헤더 디자인 바 생성.
   Widget _buildAppBar() {
     return Container(
       height: 60,
@@ -104,7 +138,6 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
     );
   }
 
-  /// 지침 텍스트 서브 위젯 빌드.
   Widget _buildDescription() {
     return const Text(
       '관심있는 여행 스타일을 선택해주세요\n(복수 선택 가능)',
@@ -118,7 +151,6 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
     );
   }
 
-  /// 2열 슬림형 비율 최적화 바인딩 카드 배열 그리드 엔진 빌드.
   Widget _buildOptionGrid() {
     return GridView.builder(
       shrinkWrap: true,
@@ -173,14 +205,12 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
     );
   }
 
-  /// 진행 조건 검증 결과 연동 이중 메인 제어 버튼 레이어 패키지 빌드.
   Widget _buildFooter() {
-    final hasSelection = _selectedStyles.isNotEmpty;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.05))),
+        border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.05))), // .withValues로 수정
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -189,8 +219,8 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
             label: '시작하기',
             color: const Color(0xFF6241D9),
             textColor: Colors.white,
-            isEnabled: hasSelection,
-            onPressed: _goToMain,
+            isEnabled: _selectedStyles.isNotEmpty,
+            onPressed: () => _saveStylesAndGoToMain(false), 
           ),
           const SizedBox(height: 12),
           _buildButton(
@@ -198,20 +228,13 @@ class _TravelStyleScreenState extends State<TravelStyleScreen> {
             color: const Color(0xFFEEEEEE),
             textColor: const Color(0xFF272727),
             isEnabled: true,
-            onPressed: _goToMain,
+            onPressed: () => _saveStylesAndGoToMain(true), 
           ),
         ],
       ),
     );
   }
 
-  /// 다목적 선언 범용 원색 스퀘어 라운드 버튼 빌더.
-  ///
-  /// - [label]: 명칭 정의 라벨 문자 정보.
-  /// - [color]: 배경 칠 컬러 오브젝트 데이터.
-  /// - [textColor]: 글꼴 표현 색상 코드 데이터.
-  /// - [isEnabled]: 유효성 확인 연동 개방 제어 플래그 변수.
-  /// - [onPressed]: 호출 작동 로직 콜백 핸들러.
   Widget _buildButton({
     required String label,
     required Color color,
