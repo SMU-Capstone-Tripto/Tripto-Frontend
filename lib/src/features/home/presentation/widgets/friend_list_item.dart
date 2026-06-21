@@ -1,56 +1,71 @@
-import 'package:flutter/material.dart';
-import 'package:tripto/src/constants/app_theme.dart';
-import 'package:tripto/src/features/home/domain/friend_model.dart';
+// lib/src/features/home/presentation/widgets/friend_list_item.dart
 
-/// 친구 목록 개별 아이템 위젯
-/// Atomic Design 기준 Molecule 레벨
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../../home/domain/friend_model.dart';
+import '../../../../constants/app_theme.dart';
+
 class FriendListItem extends StatelessWidget {
   final FriendModel friend;
-  final VoidCallback? onMoreTap;
+  final VoidCallback? onDelete;
 
   const FriendListItem({
     super.key,
     required this.friend,
-    this.onMoreTap,
+    this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+    return Dismissible(
+      key: ValueKey(friend.friend_id),
+      direction: DismissDirection.endToStart,
+      // 삭제 배경
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        decoration: BoxDecoration(
+          color: const Color(0xFFD93030),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white, size: 26),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        leading: _AvatarWidget(friend: friend),
-        title: Text(
-          friend.nikname,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
+      onDismissed: (_) => onDelete?.call(),
+      child: GestureDetector(
+        onTap: () => context.push('/home/friend-profile', extra: friend),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
           ),
-        ),
-        subtitle: Text(
-          friend.statusMessage,
-          style: const TextStyle(
-            fontSize: 11,
-            color: AppColors.textSecondary,
-          ),
-        ),
-        trailing: IconButton(
-          onPressed: onMoreTap,
-          icon: const Icon(
-            Icons.more_vert,
-            color: AppColors.textSecondary,
-            size: 18,
-          ),
-          style: IconButton.styleFrom(
-            backgroundColor: AppColors.background,
-            shape: const CircleBorder(),
+          child: Row(
+            children: [
+              // 아바타
+              _FriendAvatar(friend: friend),
+              const SizedBox(width: 12),
+              // 이름 + 상태
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(friend.nikname,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1E2939),
+                        )),
+                    const SizedBox(height: 2),
+                    Text(friend.statusMessage,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        )),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -58,59 +73,33 @@ class FriendListItem extends StatelessWidget {
   }
 }
 
-/// 아바타 위젯 (이름 두 글자 + 온라인 dot)
-class _AvatarWidget extends StatelessWidget {
+class _FriendAvatar extends StatelessWidget {
   final FriendModel friend;
-  const _AvatarWidget({required this.friend});
+  const _FriendAvatar({required this.friend});
 
-  /// AvatarColor → 배경/텍스트 색상 반환
-  (Color bg, Color text) _colors() {
-    return switch (friend.avatarColor) {
-      AvatarColor.purple => (
-          AppColors.avatarPurple,
-          AppColors.avatarPurpleText
-        ),
-      AvatarColor.pink => (AppColors.avatarPink, AppColors.avatarPinkText),
-      AvatarColor.teal => (AppColors.avatarTeal, AppColors.avatarTealText),
-      AvatarColor.amber => (AppColors.avatarAmber, AppColors.avatarAmberText),
-      AvatarColor.blue => (AppColors.avatarBlue, AppColors.avatarBlueText),
-    };
-  }
+  (Color bg, Color text) _colors() => switch (friend.avatarColor) {
+        AvatarColor.purple => (
+            AppColors.avatarPurple,
+            AppColors.avatarPurpleText
+          ),
+        AvatarColor.pink => (AppColors.avatarPink, AppColors.avatarPinkText),
+        AvatarColor.teal => (AppColors.avatarTeal, AppColors.avatarTealText),
+        AvatarColor.amber => (AppColors.avatarAmber, AppColors.avatarAmberText),
+        AvatarColor.blue => (AppColors.avatarBlue, AppColors.avatarBlueText),
+      };
 
   @override
   Widget build(BuildContext context) {
     final (bg, text) = _colors();
     return Stack(
-      clipBehavior: Clip.none,
       children: [
-        // 아바타 원
         CircleAvatar(
-          radius: 21,
+          radius: 23,
           backgroundColor: bg,
-          child: Text(
-            friend.avatarLabel,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: text,
-            ),
-          ),
+          child: Text(friend.avatarLabel,
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: text)),
         ),
-        // 온라인 표시 dot
-        if (friend.isOnline)
-          Positioned(
-            bottom: 0,
-            right: 0,
-            child: Container(
-              width: 9,
-              height: 9,
-              decoration: BoxDecoration(
-                color: AppColors.online,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-            ),
-          ),
       ],
     );
   }

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../presentation/schedule_detail_provider.dart';
-import '../presentation/widgets/timeline_item_card.dart';
-import '../presentation/widgets/schedule_item_detail_sheet.dart';
-import '../../schedule/domain/travel_model.dart';
+import '../../presentation/schedule_detail_provider.dart';
+import '../../presentation/widgets/timeline_item_card.dart';
+import '../../presentation/widgets/schedule_item_detail_sheet.dart';
+import '../../../schedule/domain/travel_model.dart';
 
 class ScheduleDetailScreen extends ConsumerStatefulWidget {
   final TravelModel schedule;
@@ -59,7 +59,7 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF1E2939))),
-                Text('${widget.schedule.dateRangeLabel} (${totalDays}일)',
+                Text('${widget.schedule.dateRangeLabel} ($totalDays일)',
                     style: const TextStyle(
                         fontSize: 12, color: Color(0xFF9993C4))),
                 const SizedBox(height: 12),
@@ -91,7 +91,7 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
             Container(
               color: Colors.white,
               child: SizedBox(
-                height: 56,
+                height: 64,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding:

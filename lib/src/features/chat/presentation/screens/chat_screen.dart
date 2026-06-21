@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tripto/src/constants/app_theme.dart';
@@ -12,8 +11,8 @@ class ChatScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final chats   = ref.watch(sortedChatProvider);
-    final sort    = ref.watch(chatSortProvider);
+    final chats = ref.watch(sortedChatProvider);
+    final sort = ref.watch(chatSortProvider);
     final notifier = ref.read(chatProvider.notifier);
 
     return Scaffold(
@@ -35,7 +34,7 @@ class ChatScreen extends ConsumerWidget {
             child: ListView.separated(
               itemCount: chats.length,
               separatorBuilder: (_, __) =>
-              const Divider(height: 1, color: Color(0xFFF0EEFF)),
+                  const Divider(height: 1, color: Color(0xFFF0EEFF)),
               itemBuilder: (context, i) => ChatListItem(
                 chat: chats[i],
                 onDelete: () => notifier.removeChat(chats[i].id),
@@ -69,7 +68,7 @@ class _ChatHeader extends StatefulWidget {
 
 class _ChatHeaderState extends State<_ChatHeader> {
   bool _sortOpen = false;
-  bool _addOpen  = false;
+  bool _addOpen = false;
 
   @override
   Widget build(BuildContext context) {
@@ -120,14 +119,17 @@ class _ChatHeaderState extends State<_ChatHeader> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 12)],
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.10), blurRadius: 12)
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Padding(
                       padding: EdgeInsets.fromLTRB(0, 0, 0, 0),
-                      ),
+                    ),
                     _SortItem(
                       label: '최신순',
                       selected: widget.sort == ChatSortOrder.newest,
@@ -160,15 +162,19 @@ class _ChatHeaderState extends State<_ChatHeader> {
             ),
             child: Row(
               children: [
-                Icon(Icons.search, size: 16, color: Colors.white.withOpacity(0.7)),
+                Icon(Icons.search,
+                    size: 16, color: Colors.white.withOpacity(0.7)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     style: const TextStyle(fontSize: 13, color: Colors.white),
                     decoration: InputDecoration(
                       hintText: '채팅방 검색',
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
-                      isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero,
+                      hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.6), fontSize: 13),
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
                     ),
                   ),
                 ),
@@ -186,7 +192,8 @@ class _SortButton extends StatelessWidget {
   final String label;
   final bool isOpen;
   final VoidCallback onTap;
-  const _SortButton({required this.label, required this.isOpen, required this.onTap});
+  const _SortButton(
+      {required this.label, required this.isOpen, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -194,12 +201,17 @@ class _SortButton extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Text(label, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white)),
           const SizedBox(width: 4),
           AnimatedRotation(
             turns: isOpen ? 0.5 : 0,
             duration: const Duration(milliseconds: 200),
-            child: Icon(Icons.keyboard_arrow_down, color: Colors.white.withOpacity(0.8), size: 20),
+            child: Icon(Icons.keyboard_arrow_down,
+                color: Colors.white.withOpacity(0.8), size: 20),
           ),
         ],
       ),
@@ -218,9 +230,11 @@ class _HeaderIconBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 36, height: 36,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.15), shape: BoxShape.circle,
+          color: Colors.white.withOpacity(0.15),
+          shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 20),
       ),
@@ -232,7 +246,11 @@ class _HeaderIconBtn extends StatelessWidget {
 class _AddButton extends StatefulWidget {
   final VoidCallback onCreateGroup;
   final VoidCallback onCreateAi;
-  const _AddButton({required this.onCreateGroup, required this.onCreateAi, required bool isOpen, required void Function() onTap});
+  const _AddButton(
+      {required this.onCreateGroup,
+      required this.onCreateAi,
+      required bool isOpen,
+      required void Function() onTap});
 
   @override
   State<_AddButton> createState() => _AddButtonState();
@@ -269,7 +287,8 @@ class _AddButtonState extends State<_AddButton> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 16),
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.12), blurRadius: 16),
                   ],
                 ),
                 child: Column(
@@ -280,7 +299,10 @@ class _AddButtonState extends State<_AddButton> {
                       iconBg: const Color(0xFFEDE9FF),
                       iconColor: const Color(0xFF6144B0),
                       label: '그룹 채팅방 만들기',
-                      onTap: () { _close(); widget.onCreateGroup(); },
+                      onTap: () {
+                        _close();
+                        widget.onCreateGroup();
+                      },
                     ),
                     const Divider(height: 1, color: Color(0xFFF3F4F6)),
                     _AddMenuItem(
@@ -288,7 +310,10 @@ class _AddButtonState extends State<_AddButton> {
                       iconBg: const Color(0xFFE1F5EE),
                       iconColor: const Color(0xFF0F6E56),
                       label: 'AI 채팅방 만들기',
-                      onTap: () { _close(); widget.onCreateAi(); },
+                      onTap: () {
+                        _close();
+                        widget.onCreateAi();
+                      },
                     ),
                   ],
                 ),
@@ -319,7 +344,8 @@ class _AddButtonState extends State<_AddButton> {
       key: _key,
       onTap: _entry == null ? _open : _close,
       child: Container(
-        width: 36, height: 36,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.15),
           shape: BoxShape.circle,
@@ -330,13 +356,17 @@ class _AddButtonState extends State<_AddButton> {
   }
 }
 
-
 class _AddMenuItem extends StatelessWidget {
   final IconData icon;
   final Color iconBg, iconColor;
   final String label;
   final VoidCallback onTap;
-  const _AddMenuItem({required this.icon, required this.iconBg, required this.iconColor, required this.label, required this.onTap});
+  const _AddMenuItem(
+      {required this.icon,
+      required this.iconBg,
+      required this.iconColor,
+      required this.label,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -347,14 +377,19 @@ class _AddMenuItem extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 30, height: 30,
-              decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(8)),
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                  color: iconBg, borderRadius: BorderRadius.circular(8)),
               child: Icon(icon, size: 16, color: iconColor),
             ),
             const SizedBox(width: 10),
-            Expanded(child: Text(
-                label,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF2D2A5E)))),
+            Expanded(
+                child: Text(label,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF2D2A5E)))),
           ],
         ),
       ),
@@ -366,7 +401,8 @@ class _SortItem extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _SortItem({required this.label, required this.selected, required this.onTap});
+  const _SortItem(
+      {required this.label, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -376,13 +412,18 @@ class _SortItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           children: [
-            Icon(Icons.check, size: 14,
+            Icon(Icons.check,
+                size: 14,
                 color: selected ? const Color(0xFF6144B0) : Colors.transparent),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(
-              fontSize: 13, fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? const Color(0xFF6144B0) : const Color(0xFF2D2A5E),
-            )),
+            Text(label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected
+                      ? const Color(0xFF6144B0)
+                      : const Color(0xFF2D2A5E),
+                )),
           ],
         ),
       ),

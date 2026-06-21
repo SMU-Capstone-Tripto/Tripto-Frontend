@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../schedule/domain/travel_model.dart';
+import '../domain/travel_model.dart';
+import '../data/travel_repository.dart';
 
 enum SortOrder { newest, oldest, longest, shortest }
 
@@ -12,85 +13,42 @@ extension SortOrderLabel on SortOrder {
       };
 }
 
-// ── 전체 일정을 관리하는 단일 Notifier ──
-// 홈, 일정 탭 양쪽에서 이 Provider를 바라봄
-class ScheduleNotifier extends StateNotifier<List<TravelModel>> {
-  ScheduleNotifier()
-      : super([
-          TravelModel(
-            travel_id: 's1',
-            title: '제주도 여행',
-            destination: '제주도',
-            start_date: DateTime(2026, 2, 16),
-            end_date: DateTime(2026, 2, 19),
-            status: TripStatus.upcoming,
-          ),
-          TravelModel(
-            travel_id: 's2',
-            title: '부산 바다 여행',
-            destination: '부산',
-            start_date: DateTime(2026, 2, 1),
-            end_date: DateTime(2026, 2, 3),
-            status: TripStatus.past,
-          ),
-          TravelModel(
-            travel_id: 's3',
-            title: '강릉 겨울 바다 여행',
-            destination: '강릉',
-            start_date: DateTime(2025, 12, 14),
-            end_date: DateTime(2025, 12, 16),
-            status: TripStatus.past,
-          ),
-          TravelModel(
-            travel_id: 's4',
-            title: '전주 한옥마을 여행',
-            destination: '전주',
-            start_date: DateTime(2025, 10, 5),
-            end_date: DateTime(2025, 10, 7),
-            status: TripStatus.past,
-          ),
-        ]);
-
-  // 지난 일정 삭제
-  void removePast(String id) {
-    state = state.where((s) => s.travel_id != id).toList();
-  }
-}
-
-final scheduleNotifierProvider =
-    StateNotifierProvider<ScheduleNotifier, List<TravelModel>>(
-  (ref) => ScheduleNotifier(),
-);
+// ── 전체 여행 목록 (API 연동) ──
+// FutureProvider이므로 AsyncValue<List<TravelModel>> 반환
+final travelsProvider = FutureProvider<List<TravelModel>>((ref) async {
+  return ref.read(travelRepositoryProvider).getTravels();
+});
 
 // 정렬 기준
 final sortOrderProvider = StateProvider<SortOrder>((ref) => SortOrder.newest);
 
-// 예정된 여행 — 홈 화면에서도 참조
-final upcomingSchedulesProvider = Provider<List<TravelModel>>((ref) {
-  return ref
-      .watch(scheduleNotifierProvider)
-      .where((s) => s.status == TripStatus.upcoming)
-      .toList();
+// 예정된 여행
+final upcomingSchedulesProvider =
+    Provider<AsyncValue<List<TravelModel>>>((ref) {
+  final travelsAsync = ref.watch(travelsProvider);
+  return travelsAsync.whenData(
+    (list) => list.where((t) => t.status == TripStatus.upcoming).toList(),
+  );
 });
 
 // 가장 가까운 예정 여행 1개 — 홈 카드에 표시
 final nextTripProvider = Provider<TravelModel?>((ref) {
-  final list = ref.watch(upcomingSchedulesProvider);
-  if (list.isEmpty) return null;
-  list.sort((a, b) => a.start_date.compareTo(b.start_date));
-  return list.first;
+  final upcomingAsync = ref.watch(upcomingSchedulesProvider);
+  final list = upcomingAsync.value; // 로딩/에러 시 null
+  if (list == null || list.isEmpty) return null;
+  final sorted = [...list]
+    ..sort((a, b) => a.start_date.compareTo(b.start_date));
+  return sorted.first;
 });
 
 // 지난 여행 — 정렬 반영
-final pastSchedulesProvider = Provider<List<TravelModel>>((ref) {
+final pastSchedulesProvider = Provider<AsyncValue<List<TravelModel>>>((ref) {
   final order = ref.watch(sortOrderProvider);
-  final past = ref
-      .watch(scheduleNotifierProvider)
-      .where((s) => s.status == TripStatus.past)
-      .toList();
+  final travelsAsync = ref.watch(travelsProvider);
 
-  return past
-    ..sort((a, b) => switch (order) {
+  return travelsAsync.whenData((list) {
+    final past = list.where((t) => t.status == TripStatus.past).toList();
+    past.sort((a, b) => switch (order) {
           SortOrder.newest => b.start_date.compareTo(a.start_date),
           SortOrder.oldest => a.start_date.compareTo(b.start_date),
           SortOrder.longest => b.end_date
@@ -100,4 +58,14 @@ final pastSchedulesProvider = Provider<List<TravelModel>>((ref) {
               .difference(a.start_date)
               .compareTo(b.end_date.difference(b.start_date)),
         });
+    return past;
+  });
+});
+
+// 지난 일정 삭제 (API 호출 + 새로고침)
+final deleteTravelProvider = Provider((ref) {
+  return (String travelId) async {
+    await ref.read(travelRepositoryProvider).deleteTravel(travelId);
+    ref.invalidate(travelsProvider); // 삭제 후 목록 갱신
+  };
 });

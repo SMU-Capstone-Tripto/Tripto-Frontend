@@ -1,63 +1,83 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:tripto/src/features/schedule/presentation/schedule_provider.dart';
 import 'package:tripto/src/features/schedule/presentation/widgets/trip_card_upcoming.dart';
 import 'package:tripto/src/features/schedule/presentation/widgets/trip_card_past.dart';
+import '../../../../common_widgets/empty_state_widget.dart';
+import '../../../../common_widgets/error_state_widget.dart';
+import '../../../../common_widgets/skeleton/schedule_skeleton.dart';
 
 class ScheduleScreen extends ConsumerWidget {
-      const ScheduleScreen({super.key});
+  const ScheduleScreen({super.key});
 
-      @override
-      Widget build(BuildContext context, WidgetRef ref) {
-        final upcoming = ref.watch(upcomingSchedulesProvider);
-        final past     = ref.watch(pastSchedulesProvider);
-        final sortOrder = ref.watch(sortOrderProvider);
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final upcomingAsync = ref.watch(upcomingSchedulesProvider);
+    final pastAsync = ref.watch(pastSchedulesProvider);
+    final sortOrder = ref.watch(sortOrderProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF2F2F2),
       body: CustomScrollView(
         slivers: [
-          // 헤더
+          // 헤더 (기존 그대로)
           SliverToBoxAdapter(
             child: Container(
               color: Colors.white,
-              padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + 16, 20, 16),
+              padding: EdgeInsets.fromLTRB(
+                  20, MediaQuery.of(context).padding.top + 16, 20, 16),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('나의 여행', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF1E2939))),
+                  Text('나의 여행',
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1E2939))),
                   SizedBox(height: 4),
-                  Text('모든 여행 일정을 관리하세요', style: TextStyle(fontSize: 13, color: Color(0xFF6A7282))),
+                  Text('모든 여행 일정을 관리하세요',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF6A7282))),
                 ],
               ),
             ),
           ),
 
           // 예정된 여행
-          SliverToBoxAdapter(
+          const SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-              child: _SectionHeader(
-                label: '예정된 여행',
-                barColor: const Color(0xFF6241D9),
-              ),
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child:
+                  _SectionHeader(label: '예정된 여행', barColor: Color(0xFF6241D9)),
             ),
           ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            sliver: SliverList.builder(
-              itemCount: upcoming.length,
-              itemBuilder: (context, i) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: TripCardUpcoming(
-                  schedule: upcoming[i],
-                  onTap: () {
-                    // TODO: 일정 상세 이동
-                  },
-                ),
+          upcomingAsync.when(
+            loading: () => const SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverToBoxAdapter(child: ScheduleListSkeleton(count: 2)),
+            ),
+            error: (e, _) => SliverToBoxAdapter(
+              child: ErrorStateWidget(
+                message: e.toString(),
+                onRetry: () => ref.invalidate(travelsProvider),
               ),
             ),
+            data: (upcoming) => upcoming.isEmpty
+                ? const SliverToBoxAdapter(child: EmptyUpcomingTripWidget())
+                : SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverList.builder(
+                      itemCount: upcoming.length,
+                      itemBuilder: (context, i) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: TripCardUpcoming(
+                          schedule: upcoming[i],
+                          onTap: () => context.push('/schedule/detail',
+                              extra: upcoming[i]),
+                        ),
+                      ),
+                    ),
+                  ),
           ),
 
           // 지난 여행
@@ -75,38 +95,52 @@ class ScheduleScreen extends ConsumerWidget {
               ),
             ),
           ),
-          // schedule_screen.dart — 지난 여행 SliverList 부분
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            sliver: SliverList.builder(
-              itemCount: past.length,
-              itemBuilder: (context, i) {
-                final schedule = past[i];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Dismissible(
-                    key: ValueKey(schedule.travel_id),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 20),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD93030),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Icon(Icons.delete_outline, color: Colors.white, size: 26),
-                    ),
-                    onDismissed: (_) {
-                      ref.read(scheduleNotifierProvider.notifier).removePast(schedule.travel_id);
-                    },
-                    child: TripCardPast(
-                      schedule: schedule,
-                      onTap: () { /* TODO */ },
+          pastAsync.when(
+            loading: () => const SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverToBoxAdapter(child: ScheduleListSkeleton(count: 2)),
+            ),
+            error: (e, _) => SliverToBoxAdapter(
+              child: ErrorStateWidget(
+                message: e.toString(),
+                onRetry: () => ref.invalidate(travelsProvider),
+              ),
+            ),
+            data: (past) => past.isEmpty
+                ? const SliverToBoxAdapter(child: EmptyPastTripWidget())
+                : SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    sliver: SliverList.builder(
+                      itemCount: past.length,
+                      itemBuilder: (context, i) {
+                        final schedule = past[i];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Dismissible(
+                            key: ValueKey(schedule.travel_id),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD93030),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Icon(Icons.delete_outline,
+                                  color: Colors.white, size: 26),
+                            ),
+                            onDismissed: (_) => ref
+                                .read(deleteTravelProvider)(schedule.travel_id),
+                            child: TripCardPast(
+                              schedule: schedule,
+                              onTap: () => context.push('/schedule/detail',
+                                  extra: schedule),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -114,13 +148,16 @@ class ScheduleScreen extends ConsumerWidget {
   }
 }
 
+// _SectionHeader, _SortDropdown, _DropdownMenu, _DropdownItem 은 기존 코드 그대로 유지
+
 // 섹션 헤더 (보라 바 + 타이틀 + 선택적 trailing)
 class _SectionHeader extends StatelessWidget {
   final String label;
   final Color barColor;
   final Widget? trailing;
 
-  const _SectionHeader({required this.label, required this.barColor, this.trailing});
+  const _SectionHeader(
+      {required this.label, required this.barColor, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -129,9 +166,17 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(width: 4, height: 22, decoration: BoxDecoration(color: barColor, borderRadius: BorderRadius.circular(99))),
+            Container(
+                width: 4,
+                height: 22,
+                decoration: BoxDecoration(
+                    color: barColor, borderRadius: BorderRadius.circular(99))),
             const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF1E2939))),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1E2939))),
           ],
         ),
         if (trailing != null) trailing!,
@@ -223,11 +268,14 @@ class _SortDropdownState extends State<_SortDropdown> {
             Text(
               widget.current.label,
               style: const TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E2939),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1E2939),
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.keyboard_arrow_down, size: 16, color: Color(0xFF4A5565)),
+            const Icon(Icons.keyboard_arrow_down,
+                size: 16, color: Color(0xFF4A5565)),
           ],
         ),
       ),
@@ -253,7 +301,8 @@ class _DropdownMenu extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.10),
-            blurRadius: 16, offset: const Offset(0, 4),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
         ],
       ),

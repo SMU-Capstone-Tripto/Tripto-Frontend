@@ -34,4 +34,22 @@ class TravelModel {
         '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
     return '${fmt(start_date)} – ${end_date.month.toString().padLeft(2, '0')}.${end_date.day.toString().padLeft(2, '0')}';
   }
+
+  factory TravelModel.fromJson(Map<String, dynamic> json) => TravelModel(
+        travel_id: json['travel_id'] as String,
+        title: json['title'] as String,
+        destination: json['destination'] as String,
+        start_date: DateTime.parse(json['start_date'] as String),
+        end_date: DateTime.parse(json['end_date'] as String),
+        status: (json['status'] as String) == 'upcoming'
+            ? TripStatus.upcoming
+            : TripStatus.past,
+      );
+
+  Map<String, dynamic> toCreateJson() => {
+        'title': title,
+        'destination': destination,
+        'start_date': start_date.toIso8601String().split('T').first,
+        'end_date': end_date.toIso8601String().split('T').first,
+      };
 }
