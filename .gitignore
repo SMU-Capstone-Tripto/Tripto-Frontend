@@ -43,4 +43,8 @@ app.*.map.json
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile
+<<<<<<< HEAD
 /android/app/release
+=======
+/android/app/release
+>>>>>>> origin/일단-임시로-올려둠

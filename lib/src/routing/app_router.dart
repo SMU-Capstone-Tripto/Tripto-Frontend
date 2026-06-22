@@ -7,7 +7,7 @@ import '../features/settings/presentation/screens/saved_schedule_screen.dart';
 import '../features/home/presentation/screens/add_friend_screen.dart';
 import '../features/home/presentation/screens/friend_profile_screen.dart';
 import '../features/home/presentation/screens/notification_screen.dart';
-import '../features/chat/presentation/screens/chat_screen.dart';
+import '../features/chat/presentation/screens/chat_list_screen.dart';
 import '../features/schedule/presentation/screens/schedule_screen.dart';
 import '../features/schedule/presentation/screens/schedule_detail_screen.dart';
 import '../features/settings/presentation/screens/profile_screen.dart';
@@ -18,10 +18,12 @@ import '../features/settings/presentation/screens/notification_setting_screen.da
 import '../features/settings/presentation/screens/app_info_screen.dart';
 import '../features/schedule/domain/travel_model.dart';
 import '../features/home/domain/friend_model.dart';
+import '../features/auth/presentation/login_screen.dart';
 
 // ── 경로 상수 ──
 // 문자열 오타 방지를 위해 상수로 관리
 class AppRoutes {
+  static const login = '/login';
   static const shell = '/';
   static const home = '/home';
   static const notification = '/notification';
@@ -50,8 +52,13 @@ const _tabs = [
 // ── Router Provider ──
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    initialLocation: AppRoutes.home,
+    initialLocation: AppRoutes.login,
     routes: [
+      // 로그인 화면 (루트)
+      GoRoute(
+        path: AppRoutes.login,
+        builder: (context, state) => const LoginScreen(),
+      ),
       // ── Shell Route: 바텀 네비가 있는 탭 화면들 ──
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => _ShellScreen(shell: shell),
@@ -84,7 +91,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [
             GoRoute(
               path: AppRoutes.chat,
-              builder: (_, __) => const ChatScreen(),
+              builder: (_, __) => const ChatListScreen(),
             ),
           ]),
 
