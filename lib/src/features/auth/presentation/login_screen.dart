@@ -6,7 +6,7 @@ import '../../home/presentation/main_home_screen.dart';
 import '../../profile/presentation/profile_setup_screen.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
-import '../../../../src/core/auth_storage.dart';
+import '../../../core/network/token_storage.dart';
 import 'package:go_router/go_router.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -47,7 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse('${AuthStorage.baseUrl}/auth/login'),
+        Uri.parse('${TokenStorage.baseUrl}/auth/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'email': email,
@@ -60,8 +60,11 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
 
-        AuthStorage.accessToken = responseData['access_token'];
-        AuthStorage.refreshToken = responseData['refresh_token'];
+        await TokenStorage.saveTokens(
+          accessToken: responseData['access_token'],
+          refreshToken: responseData['refresh_token'],
+          userId: responseData['user_id']?.toString() ?? '',
+        );
 
         _goToMain();
       } else {
@@ -89,9 +92,12 @@ class _LoginScreenState extends State<LoginScreen> {
         builder: (context) => SocialLoginWebView(
           initialUrl: url,
           onTokenReceived:
-              (accessToken, refreshToken, email, isProfileComplete) {
-            AuthStorage.accessToken = accessToken;
-            AuthStorage.refreshToken = refreshToken;
+              (accessToken, refreshToken, email, isProfileComplete) async {
+            await TokenStorage.saveTokens(
+              accessToken: accessToken,
+              refreshToken: refreshToken,
+              userId: email, // 이메일을 userId로 저장 (필요에 따라 변경 가능)
+            );
 
             if (mounted) {
               // 🛠️ 정밀 필터링: 이미 닉네임 작성을 마친 기존 유저라면 메인 홈으로 바로 진입!
@@ -213,13 +219,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           _buildSnsButton(
                             'assets/images/kakao_logo.png',
                             () => _openSocialLogin(
-                                '${AuthStorage.baseUrl}/auth/kakao/login'),
+                                '${TokenStorage.baseUrl}/auth/kakao/login'),
                           ),
                           const SizedBox(width: 30),
                           _buildSnsButton(
                             'assets/images/google_logo.png',
                             () => _openSocialLogin(
-                                '${AuthStorage.baseUrl}/auth/google/login'),
+                                '${TokenStorage.baseUrl}/auth/google/login'),
                           ),
                         ],
                       ),
@@ -456,7 +462,7 @@ class _SocialLoginWebViewState extends State<SocialLoginWebView> {
                 if (accessToken != null && refreshToken != null) {
                   // 내 정보 가져오기
                   final userRes = await http.get(
-                    Uri.parse('${AuthStorage.baseUrl}/auth/me'), //
+                    Uri.parse('${TokenStorage.baseUrl}/auth/me'),
                     headers: {'Authorization': 'Bearer $accessToken'},
                   );
 
