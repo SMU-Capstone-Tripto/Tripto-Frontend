@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
-import '../../home/presentation/main_home_screen.dart';
-import '../../profile/presentation/profile_setup_screen.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/network/token_storage.dart';

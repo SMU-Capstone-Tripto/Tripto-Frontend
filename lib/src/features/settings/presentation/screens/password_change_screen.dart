@@ -1,19 +1,25 @@
 // lib/src/features/profile/presentation/screens/password_change_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tripto/src/constants/app_theme.dart';
+import '../../data/profile_repository.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/profile_repository.dart';
 
-class PasswordChangeScreen extends StatefulWidget {
+class PasswordChangeScreen extends ConsumerStatefulWidget {
   const PasswordChangeScreen({super.key});
 
   @override
-  State<PasswordChangeScreen> createState() => _PasswordChangeScreenState();
+  ConsumerState<PasswordChangeScreen> createState() =>
+      _PasswordChangeScreenState();
 }
 
-class _PasswordChangeScreenState extends State<PasswordChangeScreen> {
+class _PasswordChangeScreenState extends ConsumerState<PasswordChangeScreen> {
   final _currentPwCtrl = TextEditingController();
   final _newPwCtrl = TextEditingController();
   final _confirmPwCtrl = TextEditingController();
+  final _verificationCodeCtrl = TextEditingController();
 
   bool _currentObscure = true;
   bool _newObscure = true;
@@ -49,7 +55,8 @@ class _PasswordChangeScreenState extends State<PasswordChangeScreen> {
   bool get _isValid =>
       _currentPwCtrl.text.isNotEmpty &&
       _newPwCtrl.text.length >= 8 &&
-      _newPwCtrl.text == _confirmPwCtrl.text;
+      _newPwCtrl.text == _confirmPwCtrl.text &&
+      _verificationCodeCtrl.text.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -97,6 +104,14 @@ class _PasswordChangeScreenState extends State<PasswordChangeScreen> {
                         obscure: _currentObscure,
                         onToggle: () =>
                             setState(() => _currentObscure = !_currentObscure),
+                        onChanged: (_) => setState(() {})),
+                    const SizedBox(height: 16),
+
+                    // 인증번호 필드
+                    _VerificationField(
+                        label: '인증번호',
+                        controller: _verificationCodeCtrl,
+                        hint: '이메일로 발송된 6자리 번호',
                         onChanged: (_) => setState(() {})),
                     const SizedBox(height: 16),
 
@@ -164,8 +179,37 @@ class _PasswordChangeScreenState extends State<PasswordChangeScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed:
-                            _isValid ? () => Navigator.pop(context) : null,
+                        onPressed: _isValid
+                            ? () async {
+                                try {
+                                  final repo =
+                                      ref.read(profileRepositoryProvider);
+
+                                  // 💡 명세서에 맞춰 oldPassword, verificationCode 전달
+                                  await repo.updatePassword(
+                                    oldPassword: _currentPwCtrl.text,
+                                    newPassword: _newPwCtrl.text,
+                                    verificationCode:
+                                        _verificationCodeCtrl.text,
+                                  );
+
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content:
+                                              Text('비밀번호가 성공적으로 변경되었습니다.')),
+                                    );
+                                    Navigator.pop(context);
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('변경 실패: $e')),
+                                    );
+                                  }
+                                }
+                              }
+                            : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
                           disabledBackgroundColor: const Color(0xFFC0BBDE),
@@ -261,6 +305,51 @@ class _PwField extends StatelessWidget {
                 color: AppColors.textSecondary,
               ),
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VerificationField extends StatelessWidget {
+  final String label, hint;
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  const _VerificationField({
+    required this.label,
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          onChanged: onChanged,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: Color(0xFFC0BBDE)),
+            filled: true,
+            fillColor: const Color(0xFFF4F3FF),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide:
+                    const BorderSide(color: Color(0xFFF0EEFF), width: 1.5)),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           ),
         ),
       ],

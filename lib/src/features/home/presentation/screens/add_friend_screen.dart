@@ -1,11 +1,12 @@
-// lib/src/features/home/presentation/screens/add_friend_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:tripto/src/constants/app_theme.dart';
+import '../../domain/friend_model.dart';
+import '../../presentation/home_provider.dart';
 
 // ── 검색 상태 ──
-enum SearchState { idle, loading, found, notFound }
+enum SearchState { idle, loading, found, notFound, error }
 
 class AddFriendScreen extends ConsumerStatefulWidget {
   const AddFriendScreen({super.key});
@@ -19,41 +20,11 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen> {
   final _focusNode = FocusNode();
 
   SearchState _state = SearchState.idle;
-  _UserResult? _result;
+  FriendModel? _result;
   bool _requestSent = false;
 
-  // 더미 유저 DB (추후 API로 교체)
-  static const _dummyUsers = {
-    'traveljang123': _UserResult(
-        name: '이재민',
-        userId: 'traveljang123',
-        statusMessage: '바다로 떠나고 싶어요 🌊',
-        avatarLabel: '이재'),
-    'jinyoung_trip': _UserResult(
-        name: '신진영',
-        userId: 'jinyoung_trip',
-        statusMessage: '최근 부산 여행',
-        avatarLabel: '신진'),
-    'sangwon_lee': _UserResult(
-        name: '이상원',
-        userId: 'sangwon_lee',
-        statusMessage: '여행 계획 없음',
-        avatarLabel: '이상'),
-  };
-
-  // 최근 검색 더미
-  final List<_UserResult> _recentSearches = [
-    const _UserResult(
-        name: '신진영',
-        userId: 'jinyoung_trip',
-        statusMessage: '최근 부산 여행',
-        avatarLabel: '신진'),
-    const _UserResult(
-        name: '이상원',
-        userId: 'sangwon_lee',
-        statusMessage: '여행 계획 없음',
-        avatarLabel: '이상'),
-  ];
+  // 최근 검색 기록 (앱 실행 중에만 유지. 영구 저장을 원하시면 SharedPreferences 연동 필요)
+  final List<FriendModel> _recentSearches = [];
 
   @override
   void dispose() {
@@ -62,6 +33,7 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen> {
     super.dispose();
   }
 
+  // ── 검색 API 호출 로직 ──
   Future<void> _search() async {
     final query = _controller.text.trim();
     if (query.isEmpty) return;
@@ -69,25 +41,72 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen> {
     setState(() => _state = SearchState.loading);
     _focusNode.unfocus();
 
-    // TODO: 실제 API 호출로 교체
-    // final result = await ref.read(friendSearchProvider(query).future);
-    await Future.delayed(const Duration(milliseconds: 600)); // 로딩 시뮬레이션
+    try {
+      // 실제 API 호출 (friendSearchProvider 사용)
+      final userModel = await ref.read(friendSearchProvider(query).future);
 
-    final user = _dummyUsers[query];
-    setState(() {
-      _result = user;
-      _requestSent = false;
-      _state = user != null ? SearchState.found : SearchState.notFound;
-    });
+      setState(() {
+        if (userModel != null) {
+          // 기존 _UserResult 매핑 로직을 지우고 바로 할당
+          _result = userModel;
+          _state = SearchState.found;
+        } else {
+          _result = null;
+          _state = SearchState.notFound;
+        }
+        _requestSent = false;
+      });
+    } catch (e) {
+      setState(() => _state = SearchState.notFound);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('검색 중 오류가 발생했습니다: $e')),
+        );
+      }
+    }
   }
 
-  void _sendRequest() {
-    setState(() => _requestSent = true);
-    // TODO: API 친구 요청 호출
+  Future<void> _sendRequest() async {
+    if (_result == null) return;
+
+    // 로딩 처리 등 필요한 경우 setState 사용 가능
+    try {
+      // home_provider에 이미 잘 만들어두신 addFriend 호출
+      await ref.read(friendListProvider.notifier).addFriend(_result!.uniqueId);
+
+      setState(() => _requestSent = true);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('친구 요청이 전송되었습니다.'),
+            backgroundColor: AppColors.primary,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('친구 요청에 실패했습니다: $e')),
+        );
+      }
+    }
   }
 
+  // ── 최근 검색어 삭제 ──
   void _removeRecent(int index) {
     setState(() => _recentSearches.removeAt(index));
+  }
+
+  // ── 아바타 색상 매핑 함수 ──
+  Color _getAvatarColor(AvatarColor colorEnum) {
+    return switch (colorEnum) {
+      AvatarColor.purple => AppColors.primary,
+      AvatarColor.pink => Colors.pinkAccent,
+      AvatarColor.teal => Colors.teal,
+      AvatarColor.amber => Colors.amber,
+      AvatarColor.blue => Colors.blueAccent,
+    };
   }
 
   @override
@@ -219,12 +238,14 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen> {
                     _recentSearches.length,
                     (i) => _RecentItem(
                           user: _recentSearches[i],
+                          avatarColor:
+                              _getAvatarColor(_recentSearches[i].avatarColor),
                           onDelete: () => _removeRecent(i),
                         )),
               ],
             ),
 
-      // 로딩
+      // 로딩 중
       SearchState.loading => const Padding(
           padding: EdgeInsets.only(top: 60),
           child: Center(
@@ -232,15 +253,40 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen> {
           ),
         ),
 
-      // 검색 결과 있음
+      // 검색 결과 찾음
       SearchState.found => _SearchResultCard(
           user: _result!,
+          avatarColor: _getAvatarColor(_result!.avatarColor),
           requestSent: _requestSent,
           onRequest: _sendRequest,
         ),
 
       // 검색 결과 없음
       SearchState.notFound => const _NotFoundState(),
+
+      // 검색 중 에러 발생
+      SearchState.error => Padding(
+          padding: const EdgeInsets.only(top: 60),
+          child: Column(
+            children: [
+              const Icon(Icons.error_outline,
+                  size: 40, color: AppColors.textSecondary),
+              const SizedBox(height: 12),
+              const Text('데이터를 불러오는 중 문제가 발생했습니다.\n다시 시도해 주세요.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      height: 1.6)),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: _search,
+                child: const Text('다시 시도',
+                    style: TextStyle(color: AppColors.primary)),
+              )
+            ],
+          ),
+        ),
     };
   }
 }
@@ -269,11 +315,17 @@ class _EmptyGuide extends StatelessWidget {
 
 // ── 검색 결과 카드 ──
 class _SearchResultCard extends StatelessWidget {
-  final _UserResult user;
+  final FriendModel user;
+  final Color avatarColor;
   final bool requestSent;
   final VoidCallback onRequest;
-  const _SearchResultCard(
-      {required this.user, required this.requestSent, required this.onRequest});
+
+  const _SearchResultCard({
+    required this.user,
+    required this.avatarColor,
+    required this.requestSent,
+    required this.onRequest,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -299,12 +351,12 @@ class _SearchResultCard extends StatelessWidget {
               // 아바타
               CircleAvatar(
                 radius: 26,
-                backgroundColor: AppColors.primaryLight,
+                backgroundColor: avatarColor.withOpacity(0.15),
                 child: Text(user.avatarLabel,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.primary)),
+                        color: avatarColor)),
               ),
               const SizedBox(width: 12),
               // 정보
@@ -312,17 +364,21 @@ class _SearchResultCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.name,
+                    Text(user.nickname,
                         style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                             color: Color(0xFF1E2939))),
-                    Text('@${user.userId}',
+                    // Tripto ID
+                    Text('@${user.uniqueId}',
                         style: const TextStyle(
                             fontSize: 12, color: AppColors.textSecondary)),
-                    Text(user.statusMessage,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                    if (user.statusMessage.isNotEmpty)
+                      Text(user.statusMessage,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary)),
                   ],
                 ),
               ),
@@ -387,9 +443,15 @@ class _NotFoundState extends StatelessWidget {
 
 // ── 최근 검색 아이템 ──
 class _RecentItem extends StatelessWidget {
-  final _UserResult user;
+  final FriendModel user;
+  final Color avatarColor;
   final VoidCallback onDelete;
-  const _RecentItem({required this.user, required this.onDelete});
+
+  const _RecentItem({
+    required this.user,
+    required this.avatarColor,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -401,24 +463,24 @@ class _RecentItem extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 18,
-                backgroundColor: AppColors.primaryLight,
+                backgroundColor: avatarColor.withOpacity(0.15),
                 child: Text(user.avatarLabel,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.primary)),
+                        color: avatarColor)),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.name,
+                    Text(user.nickname,
                         style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF1E2939))),
-                    Text('@${user.userId}',
+                    Text('@${user.uniqueId}',
                         style: const TextStyle(
                             fontSize: 11, color: AppColors.textSecondary)),
                   ],
@@ -438,14 +500,4 @@ class _RecentItem extends StatelessWidget {
       ],
     );
   }
-}
-
-// ── 유저 데이터 모델 ──
-class _UserResult {
-  final String name, userId, statusMessage, avatarLabel;
-  const _UserResult(
-      {required this.name,
-      required this.userId,
-      required this.statusMessage,
-      required this.avatarLabel});
 }

@@ -102,7 +102,7 @@ class HomeScreen extends ConsumerWidget {
                           friend: friends[i],
                           onDelete: () => ref
                               .read(friendListProvider.notifier)
-                              .removeFriend(friends[i].friend_id),
+                              .removeFriend(friends[i].uniqueId),
                         ),
                       ),
                     ),
@@ -133,7 +133,7 @@ class _HomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.primary,
+      color: const Color(0xFF4E48AF),
       padding: EdgeInsets.fromLTRB(
         20,
         MediaQuery.of(context).padding.top + 16,
@@ -154,15 +154,20 @@ class _HomeHeader extends StatelessWidget {
                     'Tripto',
                     style: TextStyle(
                       fontSize: 22,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w900,
                       color: Colors.white,
                       letterSpacing: 1.5,
+                      fontFamily: 'Pretendard',
                     ),
                   ),
                   SizedBox(height: 2),
                   Text(
                     '안녕하세요, 여행자님!',
-                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.white70,
+                      fontFamily: 'Pretendard',
+                    ),
                   ),
                 ],
               ),
@@ -231,7 +236,7 @@ class _HeaderLoadingPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.primary,
+      color: const Color(0xFF4E48AF),
       height: 200,
       child: const Center(
         child: CircularProgressIndicator(color: Colors.white),

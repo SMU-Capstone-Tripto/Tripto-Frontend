@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../../home/presentation/main_home_screen.dart';
+import '../../home/presentation/screens/navigation_screen.dart';
 import '../../../../src/core/auth_storage.dart';
 import 'package:go_router/go_router.dart';
 

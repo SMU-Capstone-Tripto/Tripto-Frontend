@@ -57,7 +57,7 @@ class FriendProfileScreen extends StatelessWidget {
               IconButton(
                 icon:
                     const Icon(Icons.more_vert, color: AppColors.textSecondary),
-                onPressed: () {/* TODO: 차단, 삭제 메뉴 */},
+                onPressed: () {/* TODO: 삭제 메뉴 */},
               ),
             ],
           ),
@@ -81,7 +81,7 @@ class FriendProfileScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   // 이름
-                  Text(friend.nikname,
+                  Text(friend.nickname,
                       style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w800,

@@ -20,10 +20,10 @@ class ProfileRepository {
 
   // ── 2. 내 정보 수정 (닉네임, 프로필 이미지 URL 등) ──
   Future<ProfileModel> updateMe(
-      {String? nikname, String? profile_image_url}) async {
+      {String? nickname, String? profile_image_url}) async {
     try {
       final res = await _dio.patch('/auth/me', data: {
-        if (nikname != null) 'nikname': nikname,
+        if (nickname != null) 'nickname': nickname,
         if (profile_image_url != null)
           'profile_image_url': profile_image_url, // 프로필 이미지 URL 수정 파라미터 추가
       });
@@ -33,7 +33,7 @@ class ProfileRepository {
     }
   }
 
-  // ── 3. S3 업로드용 Presigned URL 요청 (추가된 부분!) ──
+  // ── 3. S3 업로드용 Presigned URL 요청 ──
   Future<Map<String, String>?> getPresignedUrl(String fileName) async {
     try {
       // API 주소는 실제 백엔드 명세에 맞춰 수정해 주세요 (예: /images/presigned)
@@ -46,6 +46,24 @@ class ProfileRepository {
     } on DioException catch (e) {
       print('Presigned URL 발급 실패: ${e.message}');
       return null;
+    }
+  }
+
+  // ── 4. 비밀번호 변경 ──
+  Future<void> updatePassword({
+    required String oldPassword,
+    required String newPassword,
+    required String verificationCode,
+  }) async {
+    try {
+      // 💡 백엔드 명세에 따라 URL('/auth/password')과 파라미터 이름을 맞춰주세요.
+      await _dio.patch('/auth/password', data: {
+        'old_password': oldPassword,
+        'new_password': newPassword,
+        'verification_code': verificationCode,
+      });
+    } on DioException catch (e) {
+      throw handleDioError(e);
     }
   }
 }
