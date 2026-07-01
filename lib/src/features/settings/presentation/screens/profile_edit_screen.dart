@@ -3,21 +3,45 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tripto/src/constants/app_theme.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'password_change_screen.dart';
+import '../profile_provider.dart';
+import '../../data/profile_repository.dart';
 
-class ProfileEditScreen extends StatefulWidget {
+class ProfileEditScreen extends ConsumerStatefulWidget {
   const ProfileEditScreen({super.key});
 
   @override
-  State<ProfileEditScreen> createState() => _ProfileEditScreenState();
+  ConsumerState<ProfileEditScreen> createState() => _ProfileEditScreenState();
 }
 
-class _ProfileEditScreenState extends State<ProfileEditScreen> {
-  final _nicknameController = TextEditingController(text: '나여행');
+class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
+  final _nicknameController = TextEditingController();
   final _birthController = TextEditingController();
-  final _phoneController = TextEditingController(text: '010-0000-0000');
+  final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  final _uniqueId = 'rfqz4kmt829s'; // 서버에서 고정 발급
+
+  String _uniqueId = '';
+
+  @override
+  void initState() {
+    super.initState();
+
+    // 이전 화면(ProfileScreen)에서 이미 로드해둔 프로필 데이터 가져오기
+    final profile = ref.read(profileProvider).value;
+
+    if (profile != null) {
+      // 텍스트 필드와 텍스트 위젯에 서버 데이터 꽂아넣기
+      _nicknameController.text = profile.nickname;
+      _uniqueId = profile.unique_id;
+
+      // (참고) 현재 ProfileModel(profile_model.dart)에는 생년월일, 전화번호, 이메일 필드가 없습니다.
+      // 나중에 백엔드에 해당 항목들이 추가되면, 모델을 업데이트한 뒤 아래처럼 연결해주시면 됩니다.
+      // _birthController.text = profile.birth ?? '';
+      // _phoneController.text = profile.phone ?? '';
+      // _emailController.text = profile.email ?? '';
+    }
+  }
 
   @override
   void dispose() {
@@ -176,7 +200,38 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: () => Navigator.pop(context),
+                            onPressed: () async {
+                              try {
+                                // 1. 레포지토리 가져오기
+                                final repo =
+                                    ref.read(profileRepositoryProvider);
+
+                                // 2. 서버로 닉네임 수정 요청보내기
+                                await repo.updateMe(
+                                    nickname: _nicknameController.text);
+
+                                // 3. 프로필 상태를 무효화하여 최신 데이터로 다시 불러오기 (UI 자동 갱신)
+                                ref.invalidate(profileProvider);
+
+                                // 4. 완료 후 이전 화면으로 돌아가기 전에 성공 알림 띄우기
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('프로필이 성공적으로 수정되었습니다.'),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                  Navigator.pop(context);
+                                }
+                              } catch (e) {
+                                // 에러 발생 시 사용자에게 알림
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('프로필 수정 실패: $e')),
+                                  );
+                                }
+                              }
+                            },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF1E2939),
                               foregroundColor: Colors.white,

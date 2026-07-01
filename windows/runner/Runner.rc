@@ -90,12 +90,21 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
+<<<<<<< HEAD
             VALUE "FileDescription", "tripto" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "tripto" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
             VALUE "OriginalFilename", "tripto.exe" "\0"
             VALUE "ProductName", "tripto" "\0"
+=======
+            VALUE "FileDescription", "tripto_app" "\0"
+            VALUE "FileVersion", VERSION_AS_STRING "\0"
+            VALUE "InternalName", "tripto_app" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
+            VALUE "OriginalFilename", "tripto_app.exe" "\0"
+            VALUE "ProductName", "tripto_app" "\0"
+>>>>>>> origin/일단-임시로-올려둠
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

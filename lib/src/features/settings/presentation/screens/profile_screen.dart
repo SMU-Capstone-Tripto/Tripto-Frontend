@@ -152,14 +152,16 @@ class _ProfileHeader extends ConsumerWidget {
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: AppColors.primaryLight,
-                    // 💡 DB에 저장된 실제 이미지 URL을 불러옵니다.
-                    backgroundImage: profile.avatarUrl != null
+                    // avatarUrl이 null이므로 기본 아이콘이 보여지게 됩니다.
+                    backgroundImage: profile.avatarUrl != null &&
+                            profile.avatarUrl!.isNotEmpty
                         ? NetworkImage(profile.avatarUrl!)
                         : null,
-                    child: profile.avatarUrl == null
-                        ? const Icon(Icons.person_outline,
-                            size: 30, color: AppColors.primary)
-                        : null,
+                    child:
+                        profile.avatarUrl == null || profile.avatarUrl!.isEmpty
+                            ? const Icon(Icons.person_outline,
+                                size: 30, color: AppColors.primary)
+                            : null,
                   ),
                   // 업로드 중 로딩 표시
                   if (isUploading)
@@ -207,7 +209,7 @@ class _ProfileHeader extends ConsumerWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(profile.nikname,
+                  Text(profile.nickname,
                       style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,

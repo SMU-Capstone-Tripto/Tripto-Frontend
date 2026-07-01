@@ -1,10 +1,10 @@
 // lib/src/features/notification/domain/notification_model.dart
 
-enum NotificationType { friend, dday, chat, trip }
+enum NotificationType { friendRequest, dday, chat, trip }
 
 extension NotificationTypeLabel on NotificationType {
   String get label => switch (this) {
-        NotificationType.friend => '친구 요청',
+        NotificationType.friendRequest => '친구 요청',
         NotificationType.dday => 'D-Day',
         NotificationType.chat => '채팅',
         NotificationType.trip => '여행',
@@ -28,6 +28,7 @@ class NotificationModel {
     required this.time,
     this.isRead = false,
     this.hasFriendAction = false,
+    required String title,
   });
 
   NotificationModel copyWith({bool? isRead, bool? hasFriendAction}) =>
@@ -39,5 +40,6 @@ class NotificationModel {
         time: time,
         isRead: isRead ?? this.isRead,
         hasFriendAction: hasFriendAction ?? this.hasFriendAction,
+        title: '',
       );
 }

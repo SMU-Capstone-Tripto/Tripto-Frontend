@@ -18,7 +18,7 @@ class FriendListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dismissible(
-      key: ValueKey(friend.friend_id),
+      key: ValueKey(friend.uniqueId),
       direction: DismissDirection.endToStart,
       // 삭제 배경
       background: Container(
@@ -50,7 +50,7 @@ class FriendListItem extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(friend.nikname,
+                    Text(friend.nickname,
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,

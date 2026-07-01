@@ -11,7 +11,8 @@ class NotificationScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final notifs = ref.watch(filteredNotifProvider);
+    // 💡 이제 notifs는 AsyncValue<List<NotificationModel>> 타입입니다.
+    final notifsAsync = ref.watch(filteredNotifProvider);
     final filter = ref.watch(notifFilterProvider);
     final notifier = ref.read(notificationProvider.notifier);
 
@@ -66,9 +67,9 @@ class NotificationScreen extends ConsumerWidget {
                     onTap: () =>
                         ref.read(notifFilterProvider.notifier).state = null,
                   ),
-                  // 타입별
+                  // 타입별 (enum values 순회)
                   ...NotificationType.values.map((t) => _FilterChip(
-                        label: t.label,
+                        label: t.label, // NotificationType 확장에 label이 있다고 가정
                         active: filter == t,
                         onTap: () =>
                             ref.read(notifFilterProvider.notifier).state = t,
@@ -78,21 +79,38 @@ class NotificationScreen extends ConsumerWidget {
             ),
           ),
 
-          // ── 알림 목록 ──
+          // ── 알림 목록 (AsyncValue 상태 처리) ──
           Expanded(
-            child: notifs.isEmpty
-                ? const _EmptyState()
-                : ListView.separated(
-                    itemCount: notifs.length,
-                    separatorBuilder: (_, __) => const Divider(
-                        height: 1, color: Color(0xFFF0EEFF), indent: 20),
-                    itemBuilder: (_, i) => _NotifItem(
-                      notif: notifs[i],
-                      onTap: () => notifier.read(notifs[i].id),
-                      onAccept: () => notifier.acceptFriend(notifs[i].id),
-                      onDecline: () => notifier.declineFriend(notifs[i].id),
-                    ),
+            child: notifsAsync.when(
+              // 1. 로딩 중일 때
+              loading: () => const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary)),
+              // 2. 에러가 났을 때
+              error: (err, st) => Center(
+                child: Text('알림을 불러오지 못했습니다.\n$err',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: AppColors.textSecondary)),
+              ),
+              // 3. 데이터를 성공적으로 받아왔을 때
+              data: (notifs) {
+                if (notifs.isEmpty) {
+                  return const _EmptyState();
+                }
+
+                return ListView.separated(
+                  itemCount: notifs.length,
+                  separatorBuilder: (_, __) => const Divider(
+                      height: 1, color: Color(0xFFF0EEFF), indent: 20),
+                  itemBuilder: (_, i) => _NotifItem(
+                    notif: notifs[i],
+                    onTap: () => notifier.read(notifs[i].id),
+                    // 💡 API와 연결된 프로바이더의 함수 호출!
+                    onAccept: () => notifier.acceptFriend(notifs[i].id),
+                    onDecline: () => notifier.declineFriend(notifs[i].id),
                   ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -144,7 +162,7 @@ class _NotifItem extends StatelessWidget {
 
   // 타입별 아이콘/색상
   static const _configs = {
-    NotificationType.friend: _Config(
+    NotificationType.friendRequest: _Config(
         Icons.person_add_outlined, Color(0xFFEDE9FF), Color(0xFF6144B0)),
     NotificationType.dday: _Config(
         Icons.calendar_today_outlined, Color(0xFFFFF0F0), Color(0xFFD93030)),

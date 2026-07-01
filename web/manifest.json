@@ -1,6 +1,11 @@
 {
+<<<<<<< HEAD
     "name": "tripto",
     "short_name": "tripto",
+=======
+    "name": "tripto_app",
+    "short_name": "tripto_app",
+>>>>>>> origin/일단-임시로-올려둠
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

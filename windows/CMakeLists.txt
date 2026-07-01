@@ -1,10 +1,18 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
+<<<<<<< HEAD
 project(tripto LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "tripto")
+=======
+project(tripto_app LANGUAGES CXX)
+
+# The name of the executable created for the application. Change this to change
+# the on-disk name of your application.
+set(BINARY_NAME "tripto_app")
+>>>>>>> origin/일단-임시로-올려둠
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

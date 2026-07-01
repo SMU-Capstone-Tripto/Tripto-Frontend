@@ -11,8 +11,6 @@ class TravelRepository {
   // ── 1. 내 여행 목록 조회 (GET) ──
   Future<List<TravelModel>> getTravels() async {
     try {
-      // 💡 서버가 쿼리로 요구하는 owner_id 값을 설정합니다.
-      // (현재 로그인한 유저의 ID 문자열을 넣어주시면 됩니다. 예시: 'test_owner_id')
       const ownerId = 1;
 
       final res = await _dio.get(
