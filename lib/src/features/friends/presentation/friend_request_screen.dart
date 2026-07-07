@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../../../../src/core/auth_storage.dart';
+import '../../../core/network/auth_storage.dart';
 
 class FriendRequestScreen extends StatefulWidget {
   const FriendRequestScreen({super.key});
@@ -47,7 +47,9 @@ class _FriendRequestScreenState extends State<FriendRequestScreen> {
     if (response.statusCode == 200) {
       _fetchRequests(); // 목록 갱신
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(action == 'accept' ? '친구 요청을 수락했습니다.' : '요청을 거절했습니다.')),
+        SnackBar(
+            content:
+                Text(action == 'accept' ? '친구 요청을 수락했습니다.' : '요청을 거절했습니다.')),
       );
     }
   }
@@ -56,9 +58,9 @@ class _FriendRequestScreenState extends State<FriendRequestScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('받은 친구 요청')),
-      body: _isLoading 
-          ? const Center(child: CircularProgressIndicator()) 
-          : _requests.isEmpty 
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _requests.isEmpty
               ? const Center(child: Text('받은 요청이 없습니다.'))
               : ListView.builder(
                   itemCount: _requests.length,
@@ -66,12 +68,20 @@ class _FriendRequestScreenState extends State<FriendRequestScreen> {
                     final req = _requests[index];
                     return ListTile(
                       title: Text(req['requester']['nickname']),
-                      subtitle: Text('ID: ${req['requester']['friend_unique_id']}'),
+                      subtitle:
+                          Text('ID: ${req['requester']['friend_unique_id']}'),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          TextButton(onPressed: () => _respond(req['friendship_id'], 'accept'), child: const Text('수락')),
-                          TextButton(onPressed: () => _respond(req['friendship_id'], 'reject'), child: const Text('거절', style: TextStyle(color: Colors.red))),
+                          TextButton(
+                              onPressed: () =>
+                                  _respond(req['friendship_id'], 'accept'),
+                              child: const Text('수락')),
+                          TextButton(
+                              onPressed: () =>
+                                  _respond(req['friendship_id'], 'reject'),
+                              child: const Text('거절',
+                                  style: TextStyle(color: Colors.red))),
                         ],
                       ),
                     );

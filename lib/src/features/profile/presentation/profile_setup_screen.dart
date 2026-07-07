@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart'; 
+import 'package:flutter/cupertino.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../../travel_style/presentation/travel_style_screen.dart';
-import '../../../../src/core/auth_storage.dart';
+import '../../../core/network/auth_storage.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   final String email;
@@ -30,8 +30,8 @@ class ProfileSetupScreen extends StatefulWidget {
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   File? _image;
   final picker = ImagePicker();
-  bool _isLoading = false; 
-  
+  bool _isLoading = false;
+
   final TextEditingController _nicknameController = TextEditingController();
   final TextEditingController _birthController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
@@ -47,7 +47,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     _nicknameController.addListener(_validateInputs);
     _birthController.addListener(_validateInputs);
     _emailController.addListener(_validateInputs);
-    _emailController.text = widget.email; 
+    _emailController.text = widget.email;
   }
 
   void _validateInputs() {
@@ -76,7 +76,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           headers: AuthStorage.authHeaders, // 이미 주입된 Bearer 토큰 인증 헤더 사용
           body: jsonEncode({
             'nickname': _nicknameController.text.trim(),
-            'tags': initialTags, 
+            'tags': initialTags,
           }),
         );
 
@@ -103,7 +103,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             'password': widget.password,
             'nickname': _nicknameController.text.trim(),
             'verification_code': widget.verificationCode,
-            'tags': initialTags, 
+            'tags': initialTags,
           }),
         );
 
@@ -155,14 +155,23 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           insetPadding: const EdgeInsets.symmetric(horizontal: 80.0),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
-          title: const Text('사진 삭제', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
+          title: const Text('사진 삭제',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           content: const Text('삭제하시겠습니까?', style: TextStyle(fontSize: 14)),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소', style: TextStyle(color: Colors.grey))),
             TextButton(
-              onPressed: () { Navigator.pop(context); setState(() => _image = null); },
-              child: const Text('삭제', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('취소', style: TextStyle(color: Colors.grey))),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                setState(() => _image = null);
+              },
+              child: const Text('삭제',
+                  style: TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.bold)),
             ),
           ],
         );
@@ -177,7 +186,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
       builder: (BuildContext context) {
         return Container(
           height: 300,
@@ -187,16 +197,25 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소', style: TextStyle(color: Colors.grey))),
-                  const Text('생년월일 선택', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('취소',
+                          style: TextStyle(color: Colors.grey))),
+                  const Text('생년월일 선택',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   TextButton(
                     onPressed: () {
                       setState(() {
-                        _birthController.text = "${tempDate.year}년 ${tempDate.month.toString().padLeft(2, '0')}월 ${tempDate.day.toString().padLeft(2, '0')}일";
+                        _birthController.text =
+                            "${tempDate.year}년 ${tempDate.month.toString().padLeft(2, '0')}월 ${tempDate.day.toString().padLeft(2, '0')}일";
                       });
-                      Navigator.pop(context); 
+                      Navigator.pop(context);
                     },
-                    child: const Text('확인', style: TextStyle(color: Color(0xFF6B4FD9), fontWeight: FontWeight.bold)),
+                    child: const Text('확인',
+                        style: TextStyle(
+                            color: Color(0xFF6B4FD9),
+                            fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -219,8 +238,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        width: double.infinity, height: double.infinity,
-        decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF4D48AF), Color(0xFFB287FD)])),
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+            gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF4D48AF), Color(0xFFB287FD)])),
         child: SafeArea(
           child: Stack(
             children: [
@@ -228,9 +252,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 builder: (context, constraints) {
                   return SingleChildScrollView(
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      constraints:
+                          BoxConstraints(minHeight: constraints.maxHeight),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 40.0),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 30.0, vertical: 40.0),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,15 +264,34 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('프로필 생성', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
+                                const Text('프로필 생성',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w800)),
                                 const SizedBox(height: 40),
                                 Center(child: _buildProfileImagePicker()),
                                 const SizedBox(height: 40),
-                                _buildInputField(label: '닉네임', controller: _nicknameController, hint: '닉네임 입력', focusNode: _nicknameFocus, maxLength: 10),
+                                _buildInputField(
+                                    label: '닉네임',
+                                    controller: _nicknameController,
+                                    hint: '닉네임 입력',
+                                    focusNode: _nicknameFocus,
+                                    maxLength: 10),
                                 const SizedBox(height: 20),
-                                _buildInputField(label: '생년월일', controller: _birthController, hint: '날짜 선택', readOnly: true, onTap: () => _selectDate(context)),
+                                _buildInputField(
+                                    label: '생년월일',
+                                    controller: _birthController,
+                                    hint: '날짜 선택',
+                                    readOnly: true,
+                                    onTap: () => _selectDate(context)),
                                 const SizedBox(height: 20),
-                                _buildInputField(label: '이메일', controller: _emailController, hint: '', readOnly: true, focusNode: _emailFocus),
+                                _buildInputField(
+                                    label: '이메일',
+                                    controller: _emailController,
+                                    hint: '',
+                                    readOnly: true,
+                                    focusNode: _emailFocus),
                               ],
                             ),
                             _buildSubmitButton(),
@@ -258,7 +303,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 },
               ),
               if (_isLoading)
-                const Center(child: CircularProgressIndicator(color: Colors.white)),
+                const Center(
+                    child: CircularProgressIndicator(color: Colors.white)),
             ],
           ),
         ),
@@ -271,48 +317,103 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       children: [
         GestureDetector(
           onTap: () async {
-            final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-            if (pickedFile != null) setState(() => _image = File(pickedFile.path));
+            final pickedFile =
+                await picker.pickImage(source: ImageSource.gallery);
+            if (pickedFile != null)
+              setState(() => _image = File(pickedFile.path));
           },
           child: Container(
-            width: 120, height: 120,
+            width: 120,
+            height: 120,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2), shape: BoxShape.circle, 
-              border: Border.all(color: Colors.white.withOpacity(0.3), width: 2), 
-              image: _image != null ? DecorationImage(image: FileImage(_image!), fit: BoxFit.cover) : const DecorationImage(image: NetworkImage("https://placehold.co/120x120"), fit: BoxFit.cover),
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+              border:
+                  Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+              image: _image != null
+                  ? DecorationImage(
+                      image: FileImage(_image!), fit: BoxFit.cover)
+                  : const DecorationImage(
+                      image: NetworkImage("https://placehold.co/120x120"),
+                      fit: BoxFit.cover),
             ),
           ),
         ),
-        Positioned(right: 0, bottom: 0, child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFF404040), shape: BoxShape.circle), child: const Icon(Icons.camera_alt, color: Colors.white, size: 18))),
+        Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                    color: Color(0xFF404040), shape: BoxShape.circle),
+                child: const Icon(Icons.camera_alt,
+                    color: Colors.white, size: 18))),
         if (_image != null)
-          Positioned(top: 8, right: 8, child: GestureDetector(onTap: _showDeleteConfirmation, child: Container(padding: const EdgeInsets.all(3), decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white, size: 12)))),
+          Positioned(
+              top: 8,
+              right: 8,
+              child: GestureDetector(
+                  onTap: _showDeleteConfirmation,
+                  child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: const BoxDecoration(
+                          color: Colors.redAccent, shape: BoxShape.circle),
+                      child: const Icon(Icons.close,
+                          color: Colors.white, size: 12)))),
       ],
     );
   }
 
   Widget _buildInputField({
-    required String label, required TextEditingController controller, required String hint, FocusNode? focusNode,
-    int? maxLength, bool readOnly = false, VoidCallback? onTap, TextInputType keyboardType = TextInputType.text,
+    required String label,
+    required TextEditingController controller,
+    required String hint,
+    FocusNode? focusNode,
+    int? maxLength,
+    bool readOnly = false,
+    VoidCallback? onTap,
+    TextInputType keyboardType = TextInputType.text,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text(label,
+            style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         GestureDetector(
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 15),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15), 
+              color: Colors.white.withOpacity(0.15),
               borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.white.withOpacity(0.2)), 
+              border: Border.all(color: Colors.white.withOpacity(0.2)),
             ),
             child: TextField(
-              controller: controller, focusNode: focusNode, maxLength: maxLength, readOnly: readOnly, onTap: onTap, keyboardType: keyboardType,
-              style: TextStyle(color: readOnly ? Colors.white60 : Colors.white, fontSize: 15),
-              decoration: InputDecoration(counterText: "", border: InputBorder.none, hintText: hint, hintStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14), contentPadding: const EdgeInsets.symmetric(vertical: 15), 
-                suffix: maxLength != null ? Text('${controller.text.length}/$maxLength', style: const TextStyle(color: Colors.white38, fontSize: 12)) : null),
+              controller: controller,
+              focusNode: focusNode,
+              maxLength: maxLength,
+              readOnly: readOnly,
+              onTap: onTap,
+              keyboardType: keyboardType,
+              style: TextStyle(
+                  color: readOnly ? Colors.white60 : Colors.white,
+                  fontSize: 15),
+              decoration: InputDecoration(
+                  counterText: "",
+                  border: InputBorder.none,
+                  hintText: hint,
+                  hintStyle: TextStyle(
+                      color: Colors.white.withOpacity(0.4), fontSize: 14),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                  suffix: maxLength != null
+                      ? Text('${controller.text.length}/$maxLength',
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 12))
+                      : null),
             ),
           ),
         ),
@@ -323,33 +424,48 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   Widget _buildSubmitButton() {
     return _AnimatedScaleButton(
       isEnabled: _isButtonEnabled,
-      onPressed: () => _submitRegistration(), 
+      onPressed: () => _submitRegistration(),
       child: Container(
-        width: double.infinity, height: 55, margin: const EdgeInsets.only(top: 30),
+        width: double.infinity,
+        height: 55,
+        margin: const EdgeInsets.only(top: 30),
         decoration: BoxDecoration(
-          color: _isButtonEnabled ? Colors.white : Colors.white.withOpacity(0.3), 
-          borderRadius: BorderRadius.circular(15), 
+          color:
+              _isButtonEnabled ? Colors.white : Colors.white.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(15),
         ),
-        child: Center(child: Text('저장 및 완료', style: TextStyle(color: _isButtonEnabled ? const Color(0xFF6B4FD9) : Colors.white60, fontSize: 17, fontWeight: FontWeight.bold))),
+        child: Center(
+            child: Text('저장 및 완료',
+                style: TextStyle(
+                    color: _isButtonEnabled
+                        ? const Color(0xFF6B4FD9)
+                        : Colors.white60,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold))),
       ),
     );
   }
 
   @override
   void dispose() {
-    _nicknameController.dispose(); _birthController.dispose(); _emailController.dispose();
-    _nicknameFocus.dispose(); _emailFocus.dispose();
+    _nicknameController.dispose();
+    _birthController.dispose();
+    _emailController.dispose();
+    _nicknameFocus.dispose();
+    _emailFocus.dispose();
     super.dispose();
   }
 }
 
 class _AnimatedScaleButton extends StatefulWidget {
-  final Widget child; 
-  final VoidCallback onPressed; 
+  final Widget child;
+  final VoidCallback onPressed;
   final bool isEnabled;
 
-  const _AnimatedScaleButton({required this.child, required this.onPressed, required this.isEnabled});
-  @override State<_AnimatedScaleButton> createState() => _AnimatedScaleButtonState();
+  const _AnimatedScaleButton(
+      {required this.child, required this.onPressed, required this.isEnabled});
+  @override
+  State<_AnimatedScaleButton> createState() => _AnimatedScaleButtonState();
 }
 
 class _AnimatedScaleButtonState extends State<_AnimatedScaleButton> {
@@ -359,9 +475,17 @@ class _AnimatedScaleButtonState extends State<_AnimatedScaleButton> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTapDown: widget.isEnabled ? (_) => setState(() => _scale = 0.96) : null,
-      onTapUp: widget.isEnabled ? (_) { setState(() => _scale = 1.0); widget.onPressed(); } : null,
+      onTapUp: widget.isEnabled
+          ? (_) {
+              setState(() => _scale = 1.0);
+              widget.onPressed();
+            }
+          : null,
       onTapCancel: widget.isEnabled ? () => setState(() => _scale = 1.0) : null,
-      child: AnimatedScale(scale: _scale, duration: const Duration(milliseconds: 100), child: widget.child),
+      child: AnimatedScale(
+          scale: _scale,
+          duration: const Duration(milliseconds: 100),
+          child: widget.child),
     );
   }
 }

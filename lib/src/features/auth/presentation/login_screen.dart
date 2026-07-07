@@ -6,6 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/network/token_storage.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/network/auth_storage.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -64,7 +65,14 @@ class _LoginScreenState extends State<LoginScreen> {
           userId: responseData['user_id']?.toString() ?? '',
         );
 
-        _goToMain();
+        AuthStorage.accessToken = responseData['access_token'];
+        AuthStorage.refreshToken = responseData['refresh_token'];
+
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        if (mounted) {
+          _goToMain();
+        }
       } else {
         final errorData = jsonDecode(response.body);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -96,6 +104,9 @@ class _LoginScreenState extends State<LoginScreen> {
               refreshToken: refreshToken,
               userId: email, // 이메일을 userId로 저장 (필요에 따라 변경 가능)
             );
+
+            AuthStorage.accessToken = accessToken;
+            AuthStorage.refreshToken = refreshToken;
 
             if (mounted) {
               // 🛠️ 정밀 필터링: 이미 닉네임 작성을 마친 기존 유저라면 메인 홈으로 바로 진입!
