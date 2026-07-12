@@ -1,0 +1,25 @@
+import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/dio_client.dart';
+import '../domain/schedule_model.dart';
+
+class ScheduleRepository {
+  final Dio _dio;
+  ScheduleRepository(this._dio);
+
+  /// 특정 여행의 일별 세부 일정 조회
+  Future<List<ScheduleModel>> getSchedules(String travelId) async {
+    try {
+      final res = await _dio.get('/travels/$travelId/schedules');
+      final list = res.data as List;
+      return list.map((e) => ScheduleModel.fromJson(e)).toList();
+    } on DioException catch (e) {
+      throw handleDioError(e);
+    }
+  }
+}
+
+final scheduleRepositoryProvider = Provider<ScheduleRepository>((ref) {
+  final dio = ref.watch(dioClientProvider).dio;
+  return ScheduleRepository(dio);
+});
