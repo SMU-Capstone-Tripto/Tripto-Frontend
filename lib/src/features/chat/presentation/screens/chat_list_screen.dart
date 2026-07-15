@@ -6,6 +6,7 @@ import 'package:tripto/src/features/chat/domain/chat_model.dart';
 import 'package:tripto/src/features/chat/presentation/chat_provider.dart';
 import 'package:tripto/src/features/chat/presentation/screens/chat_add_screen.dart';
 import 'package:tripto/src/features/chat/presentation/screens/chat_room_screen.dart';
+import 'package:http/http.dart' as http; 
 
 class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
@@ -18,16 +19,96 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   String _sortType = '최신 순';
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  int _myUserId = 2; 
 
   @override
   void initState() {
     super.initState();
+    _fetchMyProfile();
     Future.microtask(() => ref.read(chatProvider.notifier).fetchRooms());
+  }
+
+  Future<void> _fetchMyProfile() async {
+    try {
+      final response = await http.get(Uri.parse('${AuthStorage.baseUrl}/auth/me'), headers: AuthStorage.authHeaders);
+      if (response.statusCode == 200) {
+        final userData = jsonDecode(utf8.decode(response.bodyBytes));
+        setState(() {
+          _myUserId = int.tryParse(userData['id']?.toString() ?? userData['user_id']?.toString() ?? '2') ?? 2;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _leaveRoomSilently(int roomId) async {
+    try {
+      final targetUrl = '${AuthStorage.baseUrl}/chat/$roomId/leave?user_id=$_myUserId';
+      await http.delete(Uri.parse(targetUrl), headers: AuthStorage.authHeaders);
+      ref.read(chatProvider.notifier).fetchRooms();
+    } catch (e) {
+      debugPrint('❌ 슬라이드 퇴장 통신 에러: $e');
+    }
+  }
+
+  /// 🎯 [확인 팝업 연동]: 슬라이드 시 사용자에게 퇴장 의사를 물어보는 커스텀 얼럿창
+  Future<bool?> _showLeaveConfirmDialog(String roomName) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.all(24),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '채팅방을 나가시겠습니까?', 
+              textAlign: TextAlign.center, 
+              style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              '\'$roomName\' 방을 나가면 대화 내용이 삭제되며\n채팅 목록에서도 대화방이 영구 제외됩니다.', 
+              textAlign: TextAlign.center, 
+              style: const TextStyle(color: Color(0xFF555555), fontSize: 13.5, fontFamily: 'Pretendard', height: 1.4),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context, false), // 거절 터치 시 false 토스
+                    child: Container(
+                      height: 48, 
+                      decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(12)), 
+                      alignment: Alignment.center, 
+                      child: const Text('취소', style: TextStyle(color: Colors.black, fontSize: 15, fontWeight: FontWeight.w500, fontFamily: 'Pretendard')),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context, true), // 승인 터치 시 true 토스
+                    child: Container(
+                      height: 48, 
+                      decoration: BoxDecoration(color: const Color(0xFFFF4D4D), borderRadius: BorderRadius.circular(12)), 
+                      alignment: Alignment.center, 
+                      child: const Text('나가기', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500, fontFamily: 'Pretendard')),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          ],
+        ),
+      ),
+    );
   }
 
   String _getCleanLastMessage(String rawMessage) {
     final trimmed = rawMessage.trim();
-    if (trimmed.isEmpty) return '대화 기록이 없습니다.';
+    if (trimmed.isEmpty) return '대화 기록이 없습니다. 첫 메세지를 보내주세요.';
     if (trimmed.startsWith('{"tripto_card_type"')) {
       try {
         final parsed = jsonDecode(trimmed);
@@ -43,7 +124,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     return rawMessage;
   }
 
-  /// 📸 [지능형 단전 방어 파서]: 백엔드 데이터가 누락되어도 방 이름을 파싱해 아바타와 인원수를 실시간 복원
   Widget _buildListCompositeAvatar(ChatModel room, List<String> parsedNames) {
     bool isBot = room.type == ChatType.ai;
     final int count = parsedNames.length;
@@ -200,40 +280,98 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               ],
             ),
           ),
+          
           Expanded(
-            child: filteredRooms.isEmpty
-                ? Center(child: Text(_searchQuery.isEmpty ? '참여 중인 채팅방이 존재하지 않습니다.' : '\'$_searchQuery\' 검색 결과방이 없습니다.', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14, fontFamily: 'Pretendard')))
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                    itemCount: filteredRooms.length,
-                    itemBuilder: (context, index) => _buildPremiumRoomCard(filteredRooms[index]),
-                  ),
+            child: RefreshIndicator(
+              color: const Color(0xFF7C5CFC),
+              backgroundColor: Colors.white,
+              onRefresh: () async {
+                await ref.read(chatProvider.notifier).fetchRooms();
+              },
+              child: filteredRooms.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                        Center(child: Text(_searchQuery.isEmpty ? '참여 중인 채팅방이 존재하지 않습니다.' : '\'$_searchQuery\' 검색 결과방이 없습니다.', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14, fontFamily: 'Pretendard'))),
+                      ],
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                      itemCount: filteredRooms.length,
+                      itemBuilder: (context, index) => _buildPremiumDismissibleCard(filteredRooms[index]),
+                    ),
+            ),
           )
         ],
       ),
     );
   }
 
-  Widget _buildPremiumRoomCard(ChatModel room) {
+  Widget _buildPremiumDismissibleCard(ChatModel room) {
+    final int parsedRoomId = int.tryParse(room.id.toString()) ?? 0;
+
+    return Dismissible(
+      key: Key('room_${room.id}'),
+      direction: DismissDirection.endToStart, 
+      
+      // ── 🎯 [안전 교정 장치]: 손을 놓았을 때 즉시 삭제되지 않고 확인 패널의 동의 유무를 기다리게 지시 ──
+      confirmDismiss: (direction) async {
+        final bool? result = await _showLeaveConfirmDialog(room.name);
+        return result ?? false; // 나가기를 누르면 true를 반환하여 리스트에서 삭제 처리 돌입
+      },
+      
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF4D4D), 
+          borderRadius: BorderRadius.circular(18),
+        ),
+        alignment: Alignment.centerRight,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('방 나가기', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Pretendard')),
+            SizedBox(width: 8),
+            Icon(Icons.exit_to_app_rounded, color: Colors.white, size: 20),
+          ],
+        ),
+      ),
+      onDismissed: (direction) {
+        if (parsedRoomId > 0) {
+          _leaveRoomSilently(parsedRoomId);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('\'${room.name}\' 채팅방에서 퇴장했습니다.'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: const Color(0xFF1E2939),
+          ),
+        );
+      },
+      child: _buildPureCardBody(room, parsedRoomId),
+    );
+  }
+
+  Widget _buildPureCardBody(ChatModel room, int parsedRoomId) {
     bool isBot = room.type == ChatType.ai;
     List<String> parsedDisplayLetters = [];
     int derivedCount = 1;
 
-    // ── 🎯 [핵심 방어선 기믹 연출]: 백엔드가 명단을 누락해도 방 이름을 쪼개서 임시 복원 ──
     try {
       final dynamic modelRaw = room;
       final List<dynamic> memberIds = modelRaw.memberIds ?? [];
       final List<dynamic> humanIds = memberIds.where((id) => id.toString() != '-1').toList();
 
       if (humanIds.isNotEmpty && modelRaw.userNames != null && modelRaw.userNames is Map) {
-        // 백엔드가 데이터를 정상 주입해 준 경우의 대가도 매핑
         for (var id in humanIds) {
           String name = modelRaw.userNames[id]?.toString() ?? '';
           if (name.isNotEmpty) parsedDisplayLetters.add(name.substring(0, 1));
         }
         derivedCount = humanIds.length;
       } else {
-        // 💡 [원천 구원]: 백엔드가 데이터를 누락했을 때 방 이름을 콤마로 분절하여 글자 획득
         final List<String> nameTokens = room.name.split(RegExp(r'[,\s]+')).where((t) => t.trim().isNotEmpty).toList();
         for (var token in nameTokens) {
           if (token != 'tripto' && token != '트립토') {
@@ -266,13 +404,12 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                 builder: (_) => ChatRoomScreen(
                   title: room.name,
                   isBotRoom: isBot,
-                  roomId: int.tryParse(room.id.toString()) ?? 14, 
+                  roomId: parsedRoomId, 
                 ),
               ),
             );
           },
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          // 🎯 파싱 분절 완료된 장부를 기반으로 멀티 아바타를 정밀 묘사
           leading: _buildListCompositeAvatar(room, parsedDisplayLetters),
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
