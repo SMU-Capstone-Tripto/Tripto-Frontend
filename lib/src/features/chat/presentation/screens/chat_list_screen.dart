@@ -1,6 +1,7 @@
+import 'dart:convert'; // 💡 JSON 판독용 임포트 추가
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:tripto/src/core/auth_storage.dart'; // 💡 AuthStorage 임포트 추가
+import 'package:tripto/src/core/auth_storage.dart'; 
 import 'package:tripto/src/features/chat/domain/chat_model.dart';
 import 'package:tripto/src/features/chat/presentation/chat_provider.dart';
 import 'package:tripto/src/features/chat/presentation/screens/chat_add_screen.dart';
@@ -22,6 +23,26 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   void initState() {
     super.initState();
     Future.microtask(() => ref.read(chatProvider.notifier).fetchRooms());
+  }
+
+  /// 🤖 [마지막 메시지 정제 필터]: 생짜 JSON 데이터가 목록창에 터지는 결함을 가둡니다.[cite: 3]
+  String _getCleanLastMessage(String rawMessage) {
+    final trimmed = rawMessage.trim();
+    if (trimmed.isEmpty) return '대화 기록이 없습니다.';
+    
+    if (trimmed.startsWith('{"tripto_card_type"')) {
+      try {
+        final parsed = jsonDecode(trimmed);
+        final String cardType = parsed['tripto_card_type'] ?? '';
+        if (cardType == 'optimized') {
+          return '🗺️ AI 최적화 여행 일정표가 도착했습니다!';
+        } else if (cardType == 'text') {
+          return parsed['content'] ?? '';
+        }
+      } catch (_) {}
+      return '🤖 tripto 가이드 브릿지 메시지';
+    }
+    return rawMessage;
   }
 
   @override
@@ -155,7 +176,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                               context: context,
                               isScrollControlled: true,
                               backgroundColor: Colors.transparent,
-                              // 💡 [코드 정돈]: 복잡한 try-catch 대신 동동 동기화 완료된 전역 AuthStorage 토큰을 정석 주입합니다.
                               builder: (_) => ChatAddScreen(realToken: AuthStorage.accessToken),
                             ).then((_) {
                               ref.read(chatProvider.notifier).fetchRooms();
@@ -260,14 +280,12 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         borderRadius: BorderRadius.circular(18),
         child: ListTile(
           onTap: () {
-            // 💥 [근본 해결]: 방 목록에서 개별 채팅방 터치 시, ChatRoomScreen에 진짜 방의 ID를 바인딩하여 전송합니다.
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => ChatRoomScreen(
                   title: room.name,
                   isBotRoom: isBot,
-                  // ChatModel에 설계되어 있는 고유 고유 식별자 ID 필드 주입 (문자열일 경우 int.tryParse 처리)
                   roomId: int.tryParse(room.id.toString()) ?? 14, 
                 ),
               ),
@@ -323,7 +341,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    room.lastMessage,
+                    _getCleanLastMessage(room.lastMessage), // 🎯 가공 파서 연결 적용 부위[cite: 3]
                     style: const TextStyle(
                         color: Color(0xFF64748B),
                         fontSize: 13,
@@ -338,7 +356,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444),
+                      color: const Color(0xFFEF4444), // 🔴 알람 배지 보존[cite: 3]
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
