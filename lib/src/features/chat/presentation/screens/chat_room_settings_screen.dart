@@ -1,33 +1,31 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' as http; 
 import 'package:tripto/src/core/auth_storage.dart';
 import 'chat_list_screen.dart';
 import 'photo_album_screen.dart';
 import 'vote_tabs_screen.dart';
 import 'friend_invite_screen.dart';
 
-/// 👑 [UI 구현]: 유저님이 첨부해주신 수평 바 분리형 플랫 골드 왕관을 그리는 전용 패스 페인터
+/// 👑 유저님이 첨부해주신 수평 바 분리형 플랫 골드 왕관을 그리는 전용 패스 페인터
 class FlatCrownPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFFFFAE34) // 이미지와 일치하는 노란색/오렌지 골드 톤
+      ..color = const Color(0xFFFFAE34) 
       ..style = PaintingStyle.fill;
 
-    // 1. 상단 3개 뿔 바디 드로잉
     final bodyPath = Path()
       ..moveTo(0, size.height * 0.3)
       ..lineTo(size.width * 0.1, size.height * 0.75)
       ..lineTo(size.width * 0.9, size.height * 0.75)
       ..lineTo(size.width, size.height * 0.3)
       ..lineTo(size.width * 0.75, size.height * 0.45)
-      ..lineTo(size.width * 0.5, size.height * 0.18) // 가운데 높은 뿔
+      ..lineTo(size.width * 0.5, size.height * 0.18) 
       ..lineTo(size.width * 0.25, size.height * 0.45)
       ..close();
     canvas.drawPath(bodyPath, paint);
 
-    // 2. 하단 독립형 수평 바 드로잉 (분리선 공간 연출)
     final barPath = Path()
       ..addRRect(RRect.fromRectAndRadius(
         Rect.fromLTWH(0, size.height * 0.84, size.width, size.height * 0.16),
@@ -63,7 +61,7 @@ class ChatRoomSettingsScreen extends StatefulWidget {
 class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
   bool _isNotificationOn = true;
   int _myUserId = 2; 
-  late String _roomTitle; // 동적 방 이름 제어 상태 변수
+  late String _roomTitle; 
 
   @override
   void initState() {
@@ -86,30 +84,18 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
     }
   }
 
-  /// 📝 [API 연동 영역]: 채팅방 이름 편집 요청 모듈 (백엔드 설계 표준 예시 반영)
   Future<void> _updateRoomTitleOnServer(String newName) async {
     try {
-      // 나중에 백엔드에 PUT/PATCH 엔드포인트 개설 시 주소만 맞춰주시면 즉시 동기화됩니다.
       final targetUrl = '${AuthStorage.baseUrl}/chat/${widget.roomId}/name?room_name=$newName';
       final response = await http.put(Uri.parse(targetUrl), headers: AuthStorage.authHeaders);
-      
       if (response.statusCode == 200) {
         debugPrint('방 이름 서버 변경 성공');
       }
     } catch (e) {
-      debugPrint('방 이름 백엔드 동기화 실패(플레이스홀더): $e');
+      debugPrint('방 이름 백엔드 동기화 실패 플레이스홀더: $e');
     }
   }
 
-  /// 📸 [API 연동 영역]: 채팅방 대표 사진 수정 모듈
-  Future<void> _uploadRoomPhotoSimulate() async {
-    // 💡 이미지 픽커(image_picker) 플러그인 결합용 인터페이스 액션 스택 부위
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('📸 갤러리 연동 및 대표 이미지 업로드를 시작합니다.', style: TextStyle(fontFamily: 'Pretendard'))),
-    );
-  }
-
-  /// 📝 [UI 렌더]: 방 이름 변경 모달 다이얼로그 상자
   void _showEditRoomNameDialog() {
     final TextEditingController nameEditController = TextEditingController(text: _roomTitle);
     showDialog(
@@ -219,6 +205,77 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
     );
   }
 
+  /// 📸 [완치 연동 부위]: 설정창 대표 그래픽 드로잉 시 트립토(ID: -1)를 확실히 거르고 실제 친구만 묶는 멀티 분할 아바타
+  Widget _buildCompositeAvatar(List<int> memberIds, Map<int, String> namesMap) {
+    // 🎯 [트립토 유령화 락]: 멤버 ID 목록을 순회할 때 ID가 -1이거나 이름이 tripto인 봇은 원천 제외(Filter)
+    final List<int> pureHumanIds = memberIds.where((id) => id != -1).toList();
+
+    final List<String> shortNames = pureHumanIds.map((id) {
+      final name = namesMap[id] ?? '대';
+      return name.isNotEmpty ? name.substring(0, 1) : '대';
+    }).toList();
+
+    final int count = shortNames.length;
+
+    Widget singleMiniAvatar(String char, double size, {Color? bg}) {
+      return Container(
+        width: size, height: size,
+        decoration: BoxDecoration(
+          color: bg ?? const Color(0xFFCBD5E1),
+          borderRadius: BorderRadius.circular(size * 0.35), 
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          char,
+          style: TextStyle(color: Colors.white, fontSize: size * 0.45, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+        ),
+      );
+    }
+
+    return Container(
+      width: 100, height: 100,
+      alignment: Alignment.center,
+      child: Builder(
+        builder: (context) {
+          // Case 1: 나 혼자 있거나 아무도 없을 때
+          if (count <= 1) {
+            return singleMiniAvatar(shortNames.isNotEmpty ? shortNames[0] : '나', 100, bg: const Color(0xFF6241D9));
+          }
+          // Case 2: 나 포함 실제 친구 2명방 (대각선 스플릿 구도)
+          else if (count == 2) {
+            return Stack(
+              children: [
+                Positioned(left: 4, top: 4, child: singleMiniAvatar(shortNames[0], 52, bg: const Color(0xFF818CF8))),
+                Positioned(right: 4, bottom: 4, child: singleMiniAvatar(shortNames[1], 52, bg: const Color(0xFF6366F1))),
+              ],
+            );
+          }
+          // Case 3: 나 포함 실제 친구 3명방 (피드백 이미지와 일치하는 정삼각형 구도)
+          else if (count == 3) {
+            return Stack(
+              children: [
+                Positioned(left: 26, top: 4, child: singleMiniAvatar(shortNames[0], 48, bg: const Color(0xFF94A3B8))),
+                Positioned(left: 2, bottom: 4, child: singleMiniAvatar(shortNames[1], 48, bg: const Color(0xFF64748B))),
+                Positioned(right: 2, bottom: 4, child: singleMiniAvatar(shortNames[2], 48, bg: const Color(0xFF475569))),
+              ],
+            );
+          }
+          // Case 4: 나 포함 실제 친구 4명 이상방 (피드백 이미지와 일치하는 2x2 그리드 배열 구도)
+          else {
+            return Stack(
+              children: [
+                Positioned(left: 4, top: 4, child: singleMiniAvatar(shortNames[0], 44, bg: const Color(0xFF94A3B8))),
+                Positioned(right: 4, top: 4, child: singleMiniAvatar(shortNames[1], 44, bg: const Color(0xFF64748B))),
+                Positioned(left: 4, bottom: 4, child: singleMiniAvatar(shortNames[2], 44, bg: const Color(0xFF475569))),
+                Positioned(right: 4, bottom: 4, child: singleMiniAvatar(shortNames[3], 44, bg: const Color(0xFF334155))),
+              ],
+            );
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -247,28 +304,12 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
       body: ListView(
         children: [
           const SizedBox(height: 35),
+          
           Center(
-            child: Stack(
-              children: [
-                const CircleAvatar(radius: 50, backgroundColor: Color(0xFF925DFB), child: Icon(Icons.groups_rounded, size: 45, color: Colors.white)),
-                // 📸 [사진 수정 터치 기믹 구현부]: 카메라 원형 탭 결합
-                Positioned(
-                  right: 0, bottom: 0,
-                  child: GestureDetector(
-                    onTap: _uploadRoomPhotoSimulate,
-                    child: Container(
-                      width: 32, height: 32,
-                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Color(0x19000000), blurRadius: 6, offset: Offset(0, 4))]),
-                      child: const Icon(Icons.camera_alt, color: Color(0xFF925DFB), size: 16),
-                    ),
-                  ),
-                )
-              ],
-            ),
+            child: _buildCompositeAvatar(widget.activeMemberIds, widget.userNamesMap),
           ),
           const SizedBox(height: 25),
           
-          // 📝 [방 이름 수정 터치 기믹 구현부]: 박스 전체 또는 연필 버튼 클릭 연동
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: GestureDetector(
@@ -312,7 +353,6 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
                   ),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                    // 💡 [수정]: 방장 직접 위임 수동 액션 기믹 원천 삭제 처리 완료
                     onTap: null, 
                     leading: CircleAvatar(
                       backgroundColor: isMe ? const Color(0xFF6241D9) : const Color(0xFFCBD5E1),
@@ -329,11 +369,10 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
                             fontSize: 14.5,
                           ),
                         ),
-                        // ── 👑 [디자인 완전 변경]: 요청하신 이미지 형상의 플랫 분리형 골드 벡터 왕관 컴포넌트 실체화 ──
                         if (isOwner) ...[
                           const SizedBox(width: 8),
                           CustomPaint(
-                            size: const Size(14, 14), // 정갈하고 이쁜 비율 크기 락
+                            size: const Size(18, 14), 
                             painter: FlatCrownPainter(),
                           ),
                         ],

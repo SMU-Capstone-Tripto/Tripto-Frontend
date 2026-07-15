@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async'; 
 import 'dart:convert';
 import 'dart:io'; 
 import 'package:flutter/material.dart';
@@ -11,7 +11,7 @@ import 'chat_room_settings_screen.dart';
 class ParsedTimelineItem {
   final String time;
   final String title;
-  final String detail; // AI가 괄호 안에 적어준 원본 명세 데이터 (시간, 비용 등 포함)
+  final String detail;
   final IconData icon;
   final Color color;
   final bool isTransit;
@@ -375,7 +375,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       });
       request.body = jsonEncode({
         "message": cleanMessage,
-        "room_id": widget.roomId,
+        "room_id": widget.roomId, 
       });
 
       final response = await client.send(request);
@@ -413,8 +413,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 accumulatedText = payload['content'] ?? '';
 
                 if (step == 'vote_confirm') {
-                  setState(() => _showVoteConfirmButtons = true);
+                  setState(() => _showVoteConfirmButtons = true); 
                 } 
+                else if (step == 'vote_denied') {
+                  setState(() => _showVoteConfirmButtons = false);
+                  accumulatedText = "🚨 방장이 아니므로 투표를 개설할 수 없습니다."; 
+                }
+                else if (step == 'vote_cancelled') {
+                  setState(() => _showVoteConfirmButtons = false);
+                  accumulatedText = "❌ 투표 개설 요청이 취소되었습니다."; 
+                }
                 else if (step == 'optimized') {
                   finalOptimizedData = payload;
                   setState(() => _isAiSessionActive = false); 
@@ -429,11 +437,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 _scrollToBottom();
               }
               else if (type == 'vote_created') {
-                accumulatedText = payload['content'] ?? '';
+                setState(() => _showVoteConfirmButtons = false);
+                accumulatedText = payload['content'] ?? '🎉 투표방이 성공적으로 개설되었습니다! 알림을 확인하세요.';
                 setState(() {
                   final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
                   if (idx != -1) {
-                    _messages[idx]['text'] = accumulatedText + " ...";
+                    _messages[idx]['text'] = accumulatedText;
                   }
                 });
                 _scrollToBottom();
@@ -505,7 +514,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         });
       }
     } catch (e) {
-      debugPrint('AI 에이전트 스트림 장애: $e');
+      debugPrint('AI 에이전트 SSE 장애: $e');
       setState(() {
         final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
         if (idx != -1) {
@@ -572,6 +581,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     return triggers.any((t) => text.contains(t));
   }
 
+  /// ── 🎯 [트립토 인원 격리 완료]: 읽음 카운팅 공식에서 봇 계정(-1) 완전 배제 연산 ──
   int _calculateUnreadCount(Map<String, dynamic> msg) {
     final int? msgId = msg['message_id'];
     final int senderId = msg['sender_id'] ?? 0;
@@ -581,6 +591,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     for (var memberId in _allRoomMembers) {
       if (memberId == senderId) continue; 
       if (memberId == _myUserId) continue; 
+      if (memberId == -1) continue; // 🎯 AI 비서(tripto) ID는 미읽음 집계에서 영구 유령 처리
+
       final int lastReadId = _userLastReadMap[memberId] ?? 0;
       if (lastReadId < msgId) {
         unreadPeople++;
@@ -684,27 +696,45 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           if (_showVoteConfirmButtons)
             Container(
               color: const Color(0xFFF1F5F9),
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF524582), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                    icon: const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
-                    label: const Text("네, 투표방을 개설합니다", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    onPressed: () {
-                      setState(() => _showVoteConfirmButtons = false);
-                      _fireAiAgentStream("네"); 
-                    },
+                  const Text(
+                    "🤖 tripto의 질문: 이 일정으로 투표방 개설을 승인할까요?",
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF524582), fontFamily: 'Pretendard'),
                   ),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                    icon: const Icon(Icons.cancel_outlined, color: Colors.grey, size: 18),
-                    label: const Text("아니오, 취소", style: TextStyle(color: Colors.grey)),
-                    onPressed: () {
-                      setState(() => _showVoteConfirmButtons = false);
-                      _fireAiAgentStream("취소"); 
-                    },
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
+                    children: [
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF524582), 
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                        ),
+                        icon: const Icon(Icons.check_circle_outline, color: Colors.white, size: 16),
+                        label: const Text("네, 시작해 주세요", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Pretendard', fontSize: 13)),
+                        onPressed: () {
+                          setState(() => _showVoteConfirmButtons = false);
+                          _fireAiAgentStream("네"); 
+                        },
+                      ),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF94A3B8)), 
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                        ),
+                        icon: const Icon(Icons.cancel_outlined, color: Color(0xFF64748B), size: 16),
+                        label: const Text("아니오, 취소", style: TextStyle(color: Color(0xFF64748B), fontFamily: 'Pretendard', fontSize: 13)),
+                        onPressed: () {
+                          setState(() => _showVoteConfirmButtons = false);
+                          _fireAiAgentStream("취소"); 
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -980,7 +1010,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     );
   }
 
-  /// ── 🪙 [복원 완료]: 텍스트 훼손 없이 AI가 작성해 준 줄글 괄호 내역을 100% 온전히 추출하는 순수 파서 ──
   List<ParsedTimelineItem> _parseItineraryLines(List<String> lines) {
     final List<ParsedTimelineItem> items = [];
 
@@ -1003,9 +1032,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           items.add(ParsedTimelineItem(
             time: time,
             title: title.isEmpty ? "경로 이동" : title,
-            detail: detail.isNotEmpty ? "($detail)" : "", // 💡 괄호 내부 멘트 완벽 복원 보장
+            detail: detail.isNotEmpty ? "($detail)" : "", 
             icon: Icons.directions_car_filled_rounded,
-            color: const Color(0xFF367BC3), // #367BC3 오션 블루
+            color: const Color(0xFF367BC3), 
             isTransit: true,
           ));
         } else {
@@ -1014,7 +1043,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             title: trimmed,
             detail: "",
             icon: Icons.directions_walk_rounded,
-            color: const Color(0xFF367BC3), // #367BC3 오션 블루
+            color: const Color(0xFF367BC3), 
             isTransit: true,
           ));
         }
@@ -1043,22 +1072,22 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         final detail = detailMatch != null ? detailMatch.group(2)!.trim() : '';
 
         IconData icon = Icons.explore_rounded;
-        Color color = const Color(0xFF524582); // #524582 퍼플
+        Color color = const Color(0xFF524582); 
 
         final lowerTitle = title.toLowerCase();
         if (lowerTitle.contains('식사') || lowerTitle.contains('맛집') || lowerTitle.contains('점심') || lowerTitle.contains('저녁') || lowerTitle.contains('식당') || lowerTitle.contains('브런치') ||
             lowerTitle.contains('카페') || lowerTitle.contains('커피') || lowerTitle.contains('디저트')) {
           icon = lowerTitle.contains('카페') || lowerTitle.contains('커피') ? Icons.local_cafe_rounded : Icons.restaurant_rounded;
-          color = const Color(0xFF38BFA7); // #38BFA7 청량 민트
+          color = const Color(0xFF38BFA7); 
         } else if (lowerTitle.contains('호텔') || lowerTitle.contains('숙소') || lowerTitle.contains('체크인') || lowerTitle.contains('체크아웃') || lowerTitle.contains('펜션') || lowerTitle.contains('민박')) {
           icon = Icons.hotel_rounded;
-          color = const Color(0xFF8FE1A2); // #8FE1A2 연그린
+          color = const Color(0xFF8FE1A2); 
         }
 
         items.add(ParsedTimelineItem(
           time: time,
           title: title,
-          detail: detail.isNotEmpty ? "($detail)" : "", // 💡 괄호 내부 멘트 완벽 복원 보장
+          detail: detail.isNotEmpty ? "($detail)" : "", 
           icon: icon,
           color: color,
         ));
@@ -1122,8 +1151,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   ),
                   const SizedBox(height: 3),
                   Text(item.title, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B), fontFamily: 'Pretendard')),
-                  
-                  // 💡 원본 멘트(비용 및 시각 조건문 포함)가 타임라인 바로 밑에 예쁘고 온전하게 배치됩니다.
                   if (item.detail.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(item.detail, style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontFamily: 'Pretendard', height: 1.3)),
