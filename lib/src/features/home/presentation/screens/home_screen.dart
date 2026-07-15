@@ -23,94 +23,106 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          // ── 상단 헤더 (여행 정보) ──
-          SliverToBoxAdapter(
-            child: _HomeHeader(
-              trip: trip,
-              unreadCount: unreadCount,
-              onNotifTap: () => context.push('/home/notification'),
-              onScheduleTap: () =>
-                  context.push('/schedule/detail', extra: trip!),
-            ),
-          ),
+      body: RefreshIndicator(
+        color: AppColors.primary, // 빙글빙글 도는 로딩 색상 지정
+        // 💡 2. 당겼을 때 실행될 로직 (Future를 반환해야 로딩 애니메이션이 유지됩니다)
+        onRefresh: () async {
+          // 서버에서 친구 목록을 다시 가져오도록 프로바이더를 새로고침(refresh) 합니다.
+          await ref.refresh(friendListProvider.future);
 
-          // ── 친구 섹션 타이틀 ──
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 3,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        '친구',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  _AddFriendButton(
-                    onTap: () => context.push('/home/add-friend'),
-                  ),
-                ],
+          // (선택) 당긴 김에 내 여행 일정이나 알림 등 다른 것도 같이 최신화하고 싶다면 여기에 추가하세요!
+          // await ref.refresh(nextTripProvider.future);
+        },
+        child: CustomScrollView(
+          slivers: [
+            // ── 상단 헤더 (여행 정보) ──
+            SliverToBoxAdapter(
+              child: _HomeHeader(
+                trip: trip,
+                unreadCount: unreadCount,
+                onNotifTap: () => context.push('/home/notification'),
+                onScheduleTap: () =>
+                    context.push('/schedule/detail', extra: trip!),
               ),
             ),
-          ),
 
-          // ── 친구 목록 ──
-          friendsAsync.when(
-            loading: () => const SliverToBoxAdapter(
+            // ── 친구 섹션 타이틀 ──
+            SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: FriendListSkeleton(count: 5),
-              ),
-            ),
-            error: (e, _) => SliverToBoxAdapter(
-              child: ErrorStateWidget(
-                message: e.toString(),
-                onRetry: () => ref.invalidate(friendListProvider),
-              ),
-            ),
-            data: (friends) => friends.isEmpty
-                ? SliverToBoxAdapter(
-                    child: EmptyFriendsWidget(
-                      onAddFriend: () => context.push('/home/add-friend'),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 3,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          '친구',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
                     ),
-                  )
-                : SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    sliver: SliverList.builder(
-                      itemCount: friends.length,
-                      itemBuilder: (_, i) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: FriendListItem(
-                          friend: friends[i],
-                          onDelete: () => ref
-                              .read(friendListProvider.notifier)
-                              .removeFriend(friends[i].friendId),
+                    _AddFriendButton(
+                      onTap: () => context.push('/home/add-friend'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // ── 친구 목록 ──
+            friendsAsync.when(
+              loading: () => const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: FriendListSkeleton(count: 5),
+                ),
+              ),
+              error: (e, _) => SliverToBoxAdapter(
+                child: ErrorStateWidget(
+                  message: e.toString(),
+                  onRetry: () => ref.invalidate(friendListProvider),
+                ),
+              ),
+              data: (friends) => friends.isEmpty
+                  ? SliverToBoxAdapter(
+                      child: EmptyFriendsWidget(
+                        onAddFriend: () => context.push('/home/add-friend'),
+                      ),
+                    )
+                  : SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      sliver: SliverList.builder(
+                        itemCount: friends.length,
+                        itemBuilder: (_, i) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: FriendListItem(
+                            friend: friends[i],
+                            onDelete: () => ref
+                                .read(friendListProvider.notifier)
+                                .removeFriend(friends[i]
+                                    .friendshipId), // 친구 삭제 시 friendshipId를 전달
+                          ),
                         ),
                       ),
                     ),
-                  ),
-          ),
+            ),
 
-          const SliverPadding(padding: EdgeInsets.only(bottom: 20)),
-        ],
+            const SliverPadding(padding: EdgeInsets.only(bottom: 20)),
+          ],
+        ),
       ),
     );
   }

@@ -15,16 +15,17 @@ class FriendNotifier extends AsyncNotifier<List<FriendModel>> {
   }
 
   // 2. 친구 삭제 (DELETE)
-  Future<void> removeFriend(int id) async {
+  Future<void> removeFriend(int friendshipId) async {
     // 파라미터 타입 변경
     try {
       final repository = ref.read(friendRepositoryProvider);
-      await repository.deleteFriend(id); // 이제 숫자가 전달됨
+      await repository.deleteFriend(friendshipId); // 이제 숫자가 전달됨
 
       if (state.hasValue) {
         final currentList = state.value!;
         // uniqueId 대신 friendId로 비교하도록 변경
-        state = AsyncData(currentList.where((f) => f.friendId != id).toList());
+        state = AsyncData(
+            currentList.where((f) => f.friendshipId != friendshipId).toList());
       }
     } catch (e) {
       rethrow;

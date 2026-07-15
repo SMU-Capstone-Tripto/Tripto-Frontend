@@ -3,13 +3,15 @@ enum AvatarColor { purple, pink, teal, amber, blue }
 
 /// 친구 도메인 모델
 class FriendModel {
-  final int friendId; // 친구 관계 ID
+  final int friendshipId; // 친구 관계 ID
+  final int friendId;
   final String uniqueId;
   final String nickname;
   final String statusMessage;
   final AvatarColor avatarColor;
 
   const FriendModel({
+    required this.friendshipId,
     required this.friendId,
     required this.uniqueId,
     required this.nickname,
@@ -23,6 +25,7 @@ class FriendModel {
         json.containsKey('user') ? json['user'] as Map<String, dynamic> : json;
 
     return FriendModel(
+      friendshipId: (json['friendship_id'] as num ?? 0).toInt(),
       friendId: (data['friend_id'] as num ?? 0).toInt(),
       uniqueId: (data['friend_unique_id'] ?? '').toString(),
       nickname: (data['nickname'] ?? '이름 없음').toString(),
