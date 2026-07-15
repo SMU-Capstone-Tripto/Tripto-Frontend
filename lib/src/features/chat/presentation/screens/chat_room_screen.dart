@@ -379,6 +379,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
       final response = await client.send(request);
       String accumulatedText = "";
+      Map<String, dynamic>? finalOptimizedData;
 
       if (response.statusCode == 200) {
         final streamLines = response.stream
@@ -414,6 +415,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   setState(() => _showVoteConfirmButtons = false);
                   accumulatedText = "🚨 방장이 아니므로 투표를 개설할 수 없습니다."; 
                 }
+                else if (step == 'optimized' || payload['itinerary'] != null) {
+                  finalOptimizedData = payload;
+                }
 
                 setState(() {
                   final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
@@ -425,6 +429,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               }
               else if (type == 'vote_created') {
                 setState(() => _showVoteConfirmButtons = false);
+                
+                if (payload['itinerary'] != null || payload['plan_title'] != null) {
+                  finalOptimizedData = payload;
+                }
+                
                 accumulatedText = payload['content'] ?? '🎉 투표방이 개설되었습니다.';
                 setState(() {
                   final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
@@ -447,21 +456,47 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           }
         }
 
-        // ── 🎯 [중요 버그 완치 부위]: 웹소켓 연결이 활성화되어 있을 때는 스트림이 끝난 후 
-        // 화면 리스트에서 임시 로딩 메시지만 말끔하게 삭제(`removeWhere`)해 줍니다.
-        // 정식 카드는 웹소켓(`new_message`)을 통해 실시간으로 1번만 안전 배출됩니다! 중복 차단 완료.
         bool isSocketConnected = (_webSocket != null && _webSocket!.readyState == WebSocket.open);
         if (isSocketConnected) {
           setState(() {
             _messages.removeWhere((m) => m['message_id'] == tempMsgId);
           });
+          
+          if (finalOptimizedData != null) {
+            final bridgeJson = {
+              "tripto_card_type": "optimized",
+              "plan_title": finalOptimizedData!['plan_title'] ?? widget.title,
+              "itinerary": finalOptimizedData!['itinerary'] ?? [],
+              "estimated_cost": finalOptimizedData!['estimated_cost'] ?? {},
+              "content": accumulatedText,
+            };
+            _broadcastBridgeMessage(jsonEncode(bridgeJson));
+          } else if (accumulatedText.isNotEmpty) {
+            final bridgeJson = {
+              "tripto_card_type": "text",
+              "content": accumulatedText,
+            };
+            _broadcastBridgeMessage(jsonEncode(bridgeJson));
+          }
         } else {
-          // 예외 상황(웹소켓 끊김)에서만 수동 복구용 백업 렌더링 가동
           setState(() {
             final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
             if (idx != -1) {
               _messages[idx]['message_id'] = DateTime.now().millisecondsSinceEpoch; 
-              _messages[idx]['text'] = accumulatedText;
+              if (finalOptimizedData != null) {
+                _messages[idx]['text'] = jsonEncode({
+                  "tripto_card_type": "optimized",
+                  "plan_title": finalOptimizedData!['plan_title'] ?? widget.title,
+                  "itinerary": finalOptimizedData!['itinerary'] ?? [],
+                  "estimated_cost": finalOptimizedData!['estimated_cost'] ?? {},
+                  "content": accumulatedText,
+                });
+              } else {
+                _messages[idx]['text'] = jsonEncode({
+                  "tripto_card_type": "text",
+                  "content": accumulatedText,
+                });
+              }
             }
           });
         }
@@ -479,6 +514,15 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         _isAiStreaming = false;
         _currentAiStatus = null;
       });
+    }
+  }
+
+  void _broadcastBridgeMessage(String textContent) {
+    if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
+      _webSocket!.add(jsonEncode({
+        "action": "send_message",
+        "content": textContent,
+      }));
     }
   }
 
@@ -604,7 +648,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       ),
       body: Column(
         children: [
-          // ── 🎯 [삭제 완료]: 요청하신 상단 보라색 세션 고정 알림바 완벽 청소 삭제 ──
           Expanded(
             child: _isHistoryLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF524582)))
@@ -636,7 +679,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF524582), 
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 10), // 💡 그만 버튼이 빠진 자리를 넓혀서 여유롭게 구성
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 10), 
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                         ),
                         icon: const Icon(Icons.check_circle_outline, color: Colors.white, size: 16),
@@ -646,7 +689,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                           _fireAiAgentStream("네"); 
                         },
                       ),
-                      // ── 🎯 [삭제 완료]: 요청하신 '아니오, 취소(그만)' 관련 소스코드 및 버튼 UI 원천 삭제 ──
                     ],
                   ),
                 ],
@@ -1017,6 +1059,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     return items;
   }
 
+  // ── 🎯 [완벽 복원]: 이전 차수 누락으로 빌드를 깨부셨던 핵심 렌더러 복직 완료 ──
   Widget _buildTimelineRow(ParsedTimelineItem item, bool isLast) {
     return IntrinsicHeight(
       child: Row(
@@ -1077,6 +1120,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     );
   }
 
+  // ── 🎯 [완벽 복원]: 이전 차수 누락으로 빌드를 깨부셨던 핵심 영수증 플로우 복직 완료 ──
   Widget _buildReceiptRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2.0),
