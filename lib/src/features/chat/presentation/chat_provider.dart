@@ -6,7 +6,8 @@ import 'package:tripto/src/features/chat/domain/chat_model.dart';
 
 enum ChatSortOrder { newest, oldest }
 
-final chatSortProvider = StateProvider<ChatSortOrder>((ref) => ChatSortOrder.newest);
+final chatSortProvider =
+    StateProvider<ChatSortOrder>((ref) => ChatSortOrder.newest);
 
 class ChatNotifier extends StateNotifier<List<ChatModel>> {
   ChatNotifier() : super(const []) {
@@ -22,16 +23,18 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> jsonList = jsonDecode(utf8.decode(response.bodyBytes));
-        
+        final List<dynamic> jsonList =
+            jsonDecode(utf8.decode(response.bodyBytes));
+
         final List<ChatModel> realRooms = jsonList.map((item) {
           final String rawTime = item['created_at'] ?? '';
           String formattedTime = '방금';
-          
+
           if (rawTime.isNotEmpty) {
             try {
               final parsedDate = DateTime.parse(rawTime);
-              formattedTime = '${parsedDate.hour.toString().padLeft(2, '0')}:${parsedDate.minute.toString().padLeft(2, '0')}';
+              formattedTime =
+                  '${parsedDate.hour.toString().padLeft(2, '0')}:${parsedDate.minute.toString().padLeft(2, '0')}';
             } catch (_) {}
           }
 
@@ -42,7 +45,7 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
             lastTime: formattedTime,
             type: ChatType.group,
             unreadCount: 0,
-            memberCount: 1, 
+            memberCount: 1,
           );
         }).toList();
 
@@ -54,14 +57,16 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
   }
 
   /// ── ⚙️ 추가 요구사항: 대화방 내부 웹소켓 수신 시 목록의 메시지/시간/알람 실시간 업데이트 ──
-  void updateRoomMessage(String roomId, String message, String time, {bool incrementUnread = false}) {
+  void updateRoomMessage(String roomId, String message, String time,
+      {bool incrementUnread = false}) {
     state = [
       for (final room in state)
         if (room.id == roomId)
           room.copyWith(
             lastMessage: message,
             lastTime: time,
-            unreadCount: incrementUnread ? room.unreadCount + 1 : room.unreadCount,
+            unreadCount:
+                incrementUnread ? room.unreadCount + 1 : room.unreadCount,
           )
         else
           room

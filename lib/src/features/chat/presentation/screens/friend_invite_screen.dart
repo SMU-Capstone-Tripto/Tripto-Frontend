@@ -28,14 +28,15 @@ class _FriendInviteScreenState extends State<FriendInviteScreen> {
     try {
       // 일반적인 유저 목록 조회 주소 타격 (가용 엔드포인트 대입)
       final response = await http.get(
-        Uri.parse('${AuthStorage.baseUrl}/users'), 
+        Uri.parse('${AuthStorage.baseUrl}/users'),
         headers: AuthStorage.authHeaders,
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         setState(() {
-          _allFriends = data is List ? data : (data['users'] ?? data['data'] ?? []);
+          _allFriends =
+              data is List ? data : (data['users'] ?? data['data'] ?? []);
         });
       }
     } catch (e) {
@@ -62,11 +63,9 @@ class _FriendInviteScreenState extends State<FriendInviteScreen> {
     try {
       // 백엔드 명세 라우터 주소 조준: POST /chat/{room_id}/invite
       final targetUrl = '${AuthStorage.baseUrl}/chat/${widget.roomId}/invite';
-      
+
       // ChatRoomInvite 스키마 명세에 맞춘 바디 패킹: {"invited_user_ids": [...]}
-      final bodyData = {
-        "invited_user_ids": _selectedUserIds.toList()
-      };
+      final bodyData = {"invited_user_ids": _selectedUserIds.toList()};
 
       final response = await http.post(
         Uri.parse(targetUrl),
@@ -90,7 +89,8 @@ class _FriendInviteScreenState extends State<FriendInviteScreen> {
   }
 
   void _showSnackBar(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg, style: const TextStyle(fontFamily: 'Pretendard'))));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg, style: const TextStyle(fontFamily: 'Pretendard'))));
   }
 
   @override
@@ -98,38 +98,64 @@ class _FriendInviteScreenState extends State<FriendInviteScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.close_rounded, color: Colors.black), onPressed: () => Navigator.pop(context)),
-        title: const Text('친구 초대', style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.black),
+            onPressed: () => Navigator.pop(context)),
+        title: const Text('친구 초대',
+            style: TextStyle(
+                color: Colors.black,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Pretendard')),
         centerTitle: true,
         actions: [
           TextButton(
             onPressed: _submitInvitation,
-            child: const Text('완료', style: TextStyle(color: Color(0xFF6241D9), fontSize: 16, fontWeight: FontWeight.bold)),
+            child: const Text('완료',
+                style: TextStyle(
+                    color: Color(0xFF6241D9),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold)),
           )
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF6241D9)))
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF6241D9)))
           : _allFriends.isEmpty
               ? const Center(child: Text('초대 가능한 친구가 없습니다.'))
               : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   itemCount: _allFriends.length,
                   itemBuilder: (context, index) {
                     final friend = _allFriends[index];
-                    final int friendId = int.tryParse(friend['user_id']?.toString() ?? '0') ?? 0;
-                    final String name = friend['name']?.toString() ?? friend['username']?.toString() ?? '알 수 없는 유저';
+                    final int friendId =
+                        int.tryParse(friend['user_id']?.toString() ?? '0') ?? 0;
+                    final String name = friend['name']?.toString() ??
+                        friend['username']?.toString() ??
+                        '알 수 없는 유저';
                     final bool isChecked = _selectedUserIds.contains(friendId);
 
                     return Container(
-                      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+                      decoration: const BoxDecoration(
+                          border: Border(
+                              bottom: BorderSide(color: Color(0xFFF1F5F9)))),
                       child: CheckboxListTile(
-                        title: Text(name, style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard', fontWeight: FontWeight.w500)),
-                        subtitle: Text('ID: $friendId', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                        title: Text(name,
+                            style: const TextStyle(
+                                fontSize: 15,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w500)),
+                        subtitle: Text('ID: $friendId',
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 12)),
                         value: isChecked,
                         activeColor: const Color(0xFF6241D9),
-                        checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        checkboxShape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4)),
                         onChanged: (bool? val) {
                           setState(() {
                             if (val == true) {

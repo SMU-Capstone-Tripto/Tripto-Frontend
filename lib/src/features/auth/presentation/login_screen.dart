@@ -98,7 +98,6 @@ class _LoginScreenState extends State<LoginScreen> {
           initialUrl: url,
           onTokenReceived:
               (accessToken, refreshToken, email, isProfileComplete) async {
-            
             // 🔥 [근본 해결 2]: 소셜 로그인 성공 및 웹뷰 콜백 수신 시 AuthStorage에 토큰 수혈 동기화
             AuthStorage.accessToken = accessToken;
             AuthStorage.refreshToken = refreshToken;

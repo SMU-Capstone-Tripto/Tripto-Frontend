@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/profile_model.dart';
 import '../../../core/network/dio_client.dart';
-import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_exception.dart' hide handleDioError;
 
 class ProfileRepository {
   final Dio _dio;
@@ -20,10 +20,11 @@ class ProfileRepository {
 
   // ── 2. 내 정보 수정 (닉네임, 프로필 이미지 URL 등) ──
   Future<ProfileModel> updateMe(
-      {String? nickname, String? profile_image_url}) async {
+      {String? nickname, String? profile_image_url, String? birth}) async {
     try {
       final res = await _dio.patch('/auth/me', data: {
         if (nickname != null) 'nickname': nickname,
+        if (birth != null) 'birth': birth,
         if (profile_image_url != null)
           'profile_image_url': profile_image_url, // 프로필 이미지 URL 수정 파라미터 추가
       });
@@ -63,6 +64,18 @@ class ProfileRepository {
         'verification_code': verificationCode,
       });
     } on DioException catch (e) {
+      throw handleDioError(e);
+    }
+  }
+
+  // ── 5. 비밀번호 변경용 인증번호 발송 요청 ──
+  Future<void> requestVerificationCode(String email) async {
+    try {
+      await _dio.post('/auth/email/send-code', data: {
+        'email': email,
+      });
+    } on DioException catch (e) {
+      print('🚨 인증번호 발송 에러 상세: ${e.response?.data}');
       throw handleDioError(e);
     }
   }

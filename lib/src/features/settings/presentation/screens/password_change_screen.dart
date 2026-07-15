@@ -6,6 +6,7 @@ import 'package:tripto/src/constants/app_theme.dart';
 import '../../data/profile_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/profile_repository.dart';
+import '../profile_provider.dart';
 
 class PasswordChangeScreen extends ConsumerStatefulWidget {
   const PasswordChangeScreen({super.key});
@@ -24,6 +25,41 @@ class _PasswordChangeScreenState extends ConsumerState<PasswordChangeScreen> {
   bool _currentObscure = true;
   bool _newObscure = true;
   bool _confirmObscure = true;
+
+  // 💡 1. 인증번호 발송 상태 관리를 위한 변수 추가
+  bool _isCodeSending = false;
+  bool _codeSent = false;
+
+  // 💡 2. 발송 버튼을 눌렀을 때 실행될 함수 추가
+  Future<void> _sendVerificationCode() async {
+    setState(() => _isCodeSending = true);
+    try {
+      // 💡 1. Provider에서 내 프로필 정보를 읽어와 이메일을 확보합니다.
+      final profile = ref.read(profileProvider).value;
+      if (profile == null || profile.email.isEmpty) {
+        throw Exception('프로필(이메일) 정보를 불러올 수 없습니다.');
+      }
+
+      // 💡 2. 레포지토리에 이메일을 넘겨 발송 요청!
+      final repo = ref.read(profileRepositoryProvider);
+      await repo.requestVerificationCode(profile.email);
+
+      setState(() => _codeSent = true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('이메일로 인증번호가 발송되었습니다.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('발송 실패: $e')),
+        );
+      }
+    } finally {
+      setState(() => _isCodeSending = false);
+    }
+  }
 
   // 비밀번호 강도 (0~4)
   int get _strength {
@@ -108,12 +144,47 @@ class _PasswordChangeScreenState extends ConsumerState<PasswordChangeScreen> {
                     const SizedBox(height: 16),
 
                     // 인증번호 필드
-                    _VerificationField(
-                        label: '인증번호',
-                        controller: _verificationCodeCtrl,
-                        hint: '이메일로 발송된 6자리 번호',
-                        onChanged: (_) => setState(() {})),
-                    const SizedBox(height: 16),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: _VerificationField(
+                              label: '인증번호',
+                              controller: _verificationCodeCtrl,
+                              hint: '이메일로 발송된 6자리 번호',
+                              onChanged: (_) => setState(() {})),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          height: 48, // TextField와 높이를 맞춤
+                          child: ElevatedButton(
+                            // 현재 비밀번호가 입력되어 있어야만 버튼 활성화
+                            onPressed:
+                                _currentPwCtrl.text.isEmpty || _isCodeSending
+                                    ? null
+                                    : _sendVerificationCode,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              disabledBackgroundColor: const Color(0xFFC0BBDE),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                            child: _isCodeSending
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white, strokeWidth: 2))
+                                : Text(_codeSent ? '재전송' : '발송',
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ],
+                    ),
 
                     // 새 비밀번호
                     _PwField(

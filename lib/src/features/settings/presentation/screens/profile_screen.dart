@@ -3,12 +3,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tripto/src/common_widgets/error_state_widget.dart';
 import 'package:tripto/src/constants/app_theme.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import '../../../../core/network/auth_storage.dart';
+import '../../../auth/presentation/login_screen.dart';
+import '../../../home/presentation/home_provider.dart';
 import '../screens/saved_schedule_screen.dart';
 import '../profile_provider.dart';
 import '../screens/saved_places_screen.dart';
 import '../screens/app_info_screen.dart';
 import '../screens/notification_setting_screen.dart';
 import '../screens/profile_edit_screen.dart';
+import '../../../../core/network/token_storage.dart';
+import 'package:go_router/go_router.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -104,8 +110,67 @@ class ProfileScreen extends ConsumerWidget {
                   ]),
                   const SizedBox(height: 8),
 
-                  // 로그아웃
-                  _LogoutButton(onTap: () {/* TODO */}),
+                  // 로그아웃 버튼 수정
+                  _LogoutButton(onTap: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        title: const Text('로그아웃',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w700)),
+                        content: const Text('정말 로그아웃 하시겠습니까?',
+                            style: TextStyle(
+                                fontSize: 14, color: AppColors.textSecondary)),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('취소',
+                                style:
+                                    TextStyle(color: AppColors.textSecondary)),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('로그아웃',
+                                style: TextStyle(color: Color(0xFFD93030))),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirm == true && context.mounted) {
+                      try {
+                        // 1. 기기 저장소 토큰 및 세션 삭제
+                        await TokenStorage.clearTokens();
+                        AuthStorage.accessToken = null;
+                        AuthStorage.refreshToken = null;
+
+                        // 💡 [해결책 1] Riverpod 캐시 강제 만료 (가장 중요)
+                        // 이 코드가 실행되어야 다음 로그인 시 이전 데이터가 아닌 새 유저 데이터를 서버에서 새로 읽어옵니다.
+                        ref.invalidate(profileProvider);
+                        ref.invalidate(friendListProvider);
+                        // ref.invalidate(savedSchedulesProvider);
+
+                        // 💡 [해결책 2] 소셜 로그인 웹뷰 쿠키 완전 삭제
+                        // 소셜 로그인 시 브라우저 세션이 남아 자동 로그인되는 현상을 방지합니다.
+                        final cookieManager = WebViewCookieManager();
+                        await cookieManager.clearCookies();
+
+                        // 2. 로그인 화면으로 이동
+                        if (context.mounted) {
+                          context.go('/login');
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('로그아웃 실패: $e')),
+                          );
+                        }
+                      }
+                    }
+                  }),
 
                   // 버전 정보
                   const _AppVersion(),

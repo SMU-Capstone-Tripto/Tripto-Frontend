@@ -2,29 +2,31 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../home/domain/friend_model.dart';
 import '../../home/domain/friend_request_model.dart';
-import '../../../core/network/dio_client.dart';
+import '../../../core/network/dio_client.dart' hide handleDioError;
 import '../../../core/network/api_exception.dart';
 
 class FriendRepository {
   final Dio _dio;
   FriendRepository(this._dio);
 
-  // ── 1. 친구 목록 조회 (GET) ──
   Future<List<FriendModel>> getFriends() async {
     try {
       final res = await _dio.get('/friends/list');
-
-      print('😎 [디버그] 서버가 준 친구 목록: ${res.data}');
-
       final list = res.data as List;
-      return list.map((e) => FriendModel.fromJson(e)).toList();
+
+      // 리스트의 각 아이템 e는 {friendship_id: 9, user: {...}} 형태입니다.
+      return list.map((e) {
+        // e 자체를 넘기면 FriendModel.fromJson에서 알아서 'user' 키를 찾습니다.
+        return FriendModel.fromJson(e as Map<String, dynamic>);
+      }).toList();
     } on DioException catch (e) {
       throw handleDioError(e);
     }
   }
 
   // ── 2. 친구 삭제 (DELETE) ──
-  Future<void> deleteFriend(String friendId) async {
+  Future<void> deleteFriend(int friendId) async {
+    // String -> int로 변경
     try {
       await _dio.delete('/friends/$friendId');
     } on DioException catch (e) {

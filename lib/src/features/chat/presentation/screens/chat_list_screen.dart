@@ -43,50 +43,17 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     return rawMessage;
   }
 
-  /// 📸 [완벽 매포 보정]: 설정창(Settings) 위젯의 다중 아바타 정렬 알고리즘을 소수점 단차까지 100% 동일하게 이식
-  Widget _buildListCompositeAvatar(ChatModel room) {
+  /// 📸 [지능형 단전 방어 파서]: 백엔드 데이터가 누락되어도 방 이름을 파싱해 아바타와 인원수를 실시간 복원
+  Widget _buildListCompositeAvatar(ChatModel room, List<String> parsedNames) {
     bool isBot = room.type == ChatType.ai;
-    List<String> shortNames = [];
-
-    try {
-      final dynamic modelRaw = room;
-      // 백엔드 스키마에서 멤버 목록을 확보
-      final List<dynamic> memberIds = modelRaw.memberIds ?? [];
-      
-      // 설정창과 일치: tripto (ID: -1)를 제외한 순수 인간 참여자 장부 필터링
-      final List<dynamic> pureHumanIds = memberIds.where((id) => id.toString() != '-1').toList();
-
-      for (var id in pureHumanIds) {
-        String uName = '';
-        
-        // 룸 내부의 유저 네임 장부 캐시 매핑 탐색
-        if (modelRaw.userNames != null && modelRaw.userNames is Map) {
-          uName = modelRaw.userNames[id]?.toString() ?? '';
-        }
-        
-        if (uName.isEmpty) {
-          // 이름이 비어있다면 방 이름이나 발신자명 기반 폰트 대체 대책
-          uName = room.name.isNotEmpty ? room.name : '유';
-        }
-        
-        shortNames.add(uName.isNotEmpty ? uName.substring(0, 1) : '유');
-      }
-    } catch (_) {}
-
-    // 안전 예외 대책 하한선 방어
-    if (shortNames.isEmpty) {
-      shortNames.add(isBot ? '🤖' : '나');
-    }
-
-    final int count = shortNames.length;
+    final int count = parsedNames.length;
 
     Widget singleMiniAvatar(String char, double size, {Color? bg}) {
       return Container(
-        width: size,
-        height: size,
+        width: size, height: size,
         decoration: BoxDecoration(
           color: bg ?? const Color(0xFFCBD5E1),
-          borderRadius: BorderRadius.circular(size * 0.35), // 설정창과 똑같은 스쿼클 라운딩
+          borderRadius: BorderRadius.circular(size * 0.35), 
         ),
         alignment: Alignment.center,
         child: Text(
@@ -96,34 +63,33 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       );
     }
 
-    // 설정창 빌더 구도 기하학 좌표와 완벽 도플갱어 매칭
     if (count <= 1) {
-      return singleMiniAvatar(shortNames[0], 52, bg: isBot ? const Color(0xFF925DFB) : const Color(0xFF6241D9));
+      return singleMiniAvatar(parsedNames.isNotEmpty ? parsedNames[0] : '나', 52, bg: isBot ? const Color(0xFF925DFB) : const Color(0xFF6241D9));
     }
     else if (count == 2) {
       return Stack(
         children: [
-          Positioned(left: 2, top: 2, child: singleMiniAvatar(shortNames[0], 28, bg: const Color(0xFF818CF8))),
-          Positioned(right: 2, bottom: 2, child: singleMiniAvatar(shortNames[1], 28, bg: const Color(0xFF6366F1))),
+          Positioned(left: 2, top: 2, child: singleMiniAvatar(parsedNames[0], 28, bg: const Color(0xFF818CF8))),
+          Positioned(right: 2, bottom: 2, child: singleMiniAvatar(parsedNames[1], 28, bg: const Color(0xFF6366F1))),
         ],
       );
     }
     else if (count == 3) {
       return Stack(
         children: [
-          Positioned(left: 14, top: 2, child: singleMiniAvatar(shortNames[0], 25, bg: const Color(0xFF94A3B8))),
-          Positioned(left: 1, bottom: 2, child: singleMiniAvatar(shortNames[1], 25, bg: const Color(0xFF64748B))),
-          Positioned(right: 1, bottom: 2, child: singleMiniAvatar(shortNames[2], 25, bg: const Color(0xFF475569))),
+          Positioned(left: 14, top: 2, child: singleMiniAvatar(parsedNames[0], 25, bg: const Color(0xFF94A3B8))),
+          Positioned(left: 1, bottom: 2, child: singleMiniAvatar(parsedNames[1], 25, bg: const Color(0xFF64748B))),
+          Positioned(right: 1, bottom: 2, child: singleMiniAvatar(parsedNames[2], 25, bg: const Color(0xFF475569))),
         ],
       );
     }
     else {
       return Stack(
         children: [
-          Positioned(left: 2, top: 2, child: singleMiniAvatar(shortNames[0], 23, bg: const Color(0xFF94A3B8))),
-          Positioned(right: 2, top: 2, child: singleMiniAvatar(shortNames[1], 23, bg: const Color(0xFF64748B))),
-          Positioned(left: 2, bottom: 2, child: singleMiniAvatar(shortNames[2], 23, bg: const Color(0xFF475569))),
-          Positioned(right: 2, bottom: 2, child: singleMiniAvatar(shortNames[3], 23, bg: const Color(0xFF334155))),
+          Positioned(left: 2, top: 2, child: singleMiniAvatar(parsedNames[0], 23, bg: const Color(0xFF94A3B8))),
+          Positioned(right: 2, top: 2, child: singleMiniAvatar(parsedNames[1], 23, bg: const Color(0xFF64748B))),
+          Positioned(left: 2, bottom: 2, child: singleMiniAvatar(parsedNames[2], 23, bg: const Color(0xFF475569))),
+          Positioned(right: 2, bottom: 2, child: singleMiniAvatar(parsedNames[3], 23, bg: const Color(0xFF334155))),
         ],
       );
     }
@@ -250,16 +216,40 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 
   Widget _buildPremiumRoomCard(ChatModel room) {
     bool isBot = room.type == ChatType.ai;
+    List<String> parsedDisplayLetters = [];
+    int derivedCount = 1;
 
-    int rawTotalCount = 2; 
+    // ── 🎯 [핵심 방어선 기믹 연출]: 백엔드가 명단을 누락해도 방 이름을 쪼개서 임시 복원 ──
     try {
       final dynamic modelRaw = room;
-      if (modelRaw.memberIds != null && modelRaw.memberIds is List) {
-        rawTotalCount = (modelRaw.memberIds as List).length - 1;
-      }
-    } catch (_) {}
+      final List<dynamic> memberIds = modelRaw.memberIds ?? [];
+      final List<dynamic> humanIds = memberIds.where((id) => id.toString() != '-1').toList();
 
-    final int humanMemberCount = isBot ? 1 : (rawTotalCount <= 0 ? 1 : rawTotalCount);
+      if (humanIds.isNotEmpty && modelRaw.userNames != null && modelRaw.userNames is Map) {
+        // 백엔드가 데이터를 정상 주입해 준 경우의 대가도 매핑
+        for (var id in humanIds) {
+          String name = modelRaw.userNames[id]?.toString() ?? '';
+          if (name.isNotEmpty) parsedDisplayLetters.add(name.substring(0, 1));
+        }
+        derivedCount = humanIds.length;
+      } else {
+        // 💡 [원천 구원]: 백엔드가 데이터를 누락했을 때 방 이름을 콤마로 분절하여 글자 획득
+        final List<String> nameTokens = room.name.split(RegExp(r'[,\s]+')).where((t) => t.trim().isNotEmpty).toList();
+        for (var token in nameTokens) {
+          if (token != 'tripto' && token != '트립토') {
+            parsedDisplayLetters.add(token.substring(0, 1));
+          }
+        }
+        derivedCount = parsedDisplayLetters.length;
+        if (derivedCount <= 0) derivedCount = 1;
+      }
+    } catch (_) {
+      derivedCount = 1;
+    }
+
+    if (parsedDisplayLetters.isEmpty) {
+      parsedDisplayLetters.add(isBot ? '🤖' : '나');
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -282,7 +272,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
             );
           },
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          leading: _buildListCompositeAvatar(room),
+          // 🎯 파싱 분절 완료된 장부를 기반으로 멀티 아바타를 정밀 묘사
+          leading: _buildListCompositeAvatar(room, parsedDisplayLetters),
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -302,7 +293,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                     if (!isBot) ...[
                       const SizedBox(width: 8), 
                       Text(
-                        '$humanMemberCount', 
+                        '$derivedCount', 
                         style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontWeight: FontWeight.w500, fontFamily: 'Pretendard'),
                       ),
                     ],

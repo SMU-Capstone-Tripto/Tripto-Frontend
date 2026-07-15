@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../home/domain/friend_model.dart';
 import '../data/friend_repository.dart';
-
 export 'package:tripto/src/features/schedule/presentation/schedule_provider.dart'
     show nextTripProvider;
 
@@ -16,15 +15,16 @@ class FriendNotifier extends AsyncNotifier<List<FriendModel>> {
   }
 
   // 2. 친구 삭제 (DELETE)
-  Future<void> removeFriend(String id) async {
+  Future<void> removeFriend(int id) async {
+    // 파라미터 타입 변경
     try {
       final repository = ref.read(friendRepositoryProvider);
-      await repository.deleteFriend(id);
+      await repository.deleteFriend(id); // 이제 숫자가 전달됨
 
-      // 성공 시 즉시 UI 반영 (Optimistic Update)
       if (state.hasValue) {
         final currentList = state.value!;
-        state = AsyncData(currentList.where((f) => f.uniqueId != id).toList());
+        // uniqueId 대신 friendId로 비교하도록 변경
+        state = AsyncData(currentList.where((f) => f.friendId != id).toList());
       }
     } catch (e) {
       rethrow;
