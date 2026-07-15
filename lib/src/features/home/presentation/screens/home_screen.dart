@@ -102,7 +102,7 @@ class HomeScreen extends ConsumerWidget {
                           friend: friends[i],
                           onDelete: () => ref
                               .read(friendListProvider.notifier)
-                              .removeFriend(friends[i].uniqueId),
+                              .removeFriend(friends[i].friendId),
                         ),
                       ),
                     ),
