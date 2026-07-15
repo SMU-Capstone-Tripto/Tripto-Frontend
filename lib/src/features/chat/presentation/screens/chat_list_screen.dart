@@ -1,11 +1,12 @@
-import 'dart:convert'; // 💡 JSON 판독용 임포트 추가
+import 'dart:convert'; 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:tripto/src/core/auth_storage.dart';
+import 'package:tripto/src/core/auth_storage.dart'; 
 import 'package:tripto/src/features/chat/domain/chat_model.dart';
 import 'package:tripto/src/features/chat/presentation/chat_provider.dart';
 import 'package:tripto/src/features/chat/presentation/screens/chat_add_screen.dart';
 import 'package:tripto/src/features/chat/presentation/screens/chat_room_screen.dart';
+import 'package:http/http.dart' as http; 
 
 class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
@@ -18,18 +19,96 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   String _sortType = '최신 순';
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  int _myUserId = 2; 
 
   @override
   void initState() {
     super.initState();
+    _fetchMyProfile();
     Future.microtask(() => ref.read(chatProvider.notifier).fetchRooms());
   }
 
-  /// 🤖 [마지막 메시지 정제 필터]: 생짜 JSON 데이터가 목록창에 터지는 결함을 가둡니다.[cite: 3]
+  Future<void> _fetchMyProfile() async {
+    try {
+      final response = await http.get(Uri.parse('${AuthStorage.baseUrl}/auth/me'), headers: AuthStorage.authHeaders);
+      if (response.statusCode == 200) {
+        final userData = jsonDecode(utf8.decode(response.bodyBytes));
+        setState(() {
+          _myUserId = int.tryParse(userData['id']?.toString() ?? userData['user_id']?.toString() ?? '2') ?? 2;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _leaveRoomSilently(int roomId) async {
+    try {
+      final targetUrl = '${AuthStorage.baseUrl}/chat/$roomId/leave?user_id=$_myUserId';
+      await http.delete(Uri.parse(targetUrl), headers: AuthStorage.authHeaders);
+      ref.read(chatProvider.notifier).fetchRooms();
+    } catch (e) {
+      debugPrint('❌ 슬라이드 퇴장 통신 에러: $e');
+    }
+  }
+
+  /// 🎯 [확인 팝업 연동]: 슬라이드 시 사용자에게 퇴장 의사를 물어보는 커스텀 얼럿창
+  Future<bool?> _showLeaveConfirmDialog(String roomName) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.all(24),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '채팅방을 나가시겠습니까?', 
+              textAlign: TextAlign.center, 
+              style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              '\'$roomName\' 방을 나가면 대화 내용이 삭제되며\n채팅 목록에서도 대화방이 영구 제외됩니다.', 
+              textAlign: TextAlign.center, 
+              style: const TextStyle(color: Color(0xFF555555), fontSize: 13.5, fontFamily: 'Pretendard', height: 1.4),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context, false), // 거절 터치 시 false 토스
+                    child: Container(
+                      height: 48, 
+                      decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(12)), 
+                      alignment: Alignment.center, 
+                      child: const Text('취소', style: TextStyle(color: Colors.black, fontSize: 15, fontWeight: FontWeight.w500, fontFamily: 'Pretendard')),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context, true), // 승인 터치 시 true 토스
+                    child: Container(
+                      height: 48, 
+                      decoration: BoxDecoration(color: const Color(0xFFFF4D4D), borderRadius: BorderRadius.circular(12)), 
+                      alignment: Alignment.center, 
+                      child: const Text('나가기', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500, fontFamily: 'Pretendard')),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
   String _getCleanLastMessage(String rawMessage) {
     final trimmed = rawMessage.trim();
-    if (trimmed.isEmpty) return '대화 기록이 없습니다.';
-
+    if (trimmed.isEmpty) return '대화 기록이 없습니다. 첫 메세지를 보내주세요.';
     if (trimmed.startsWith('{"tripto_card_type"')) {
       try {
         final parsed = jsonDecode(trimmed);
@@ -43,6 +122,57 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       return '🤖 tripto 가이드 브릿지 메시지';
     }
     return rawMessage;
+  }
+
+  Widget _buildListCompositeAvatar(ChatModel room, List<String> parsedNames) {
+    bool isBot = room.type == ChatType.ai;
+    final int count = parsedNames.length;
+
+    Widget singleMiniAvatar(String char, double size, {Color? bg}) {
+      return Container(
+        width: size, height: size,
+        decoration: BoxDecoration(
+          color: bg ?? const Color(0xFFCBD5E1),
+          borderRadius: BorderRadius.circular(size * 0.35), 
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          char,
+          style: TextStyle(color: Colors.white, fontSize: size * 0.45, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+        ),
+      );
+    }
+
+    if (count <= 1) {
+      return singleMiniAvatar(parsedNames.isNotEmpty ? parsedNames[0] : '나', 52, bg: isBot ? const Color(0xFF925DFB) : const Color(0xFF6241D9));
+    }
+    else if (count == 2) {
+      return Stack(
+        children: [
+          Positioned(left: 2, top: 2, child: singleMiniAvatar(parsedNames[0], 28, bg: const Color(0xFF818CF8))),
+          Positioned(right: 2, bottom: 2, child: singleMiniAvatar(parsedNames[1], 28, bg: const Color(0xFF6366F1))),
+        ],
+      );
+    }
+    else if (count == 3) {
+      return Stack(
+        children: [
+          Positioned(left: 14, top: 2, child: singleMiniAvatar(parsedNames[0], 25, bg: const Color(0xFF94A3B8))),
+          Positioned(left: 1, bottom: 2, child: singleMiniAvatar(parsedNames[1], 25, bg: const Color(0xFF64748B))),
+          Positioned(right: 1, bottom: 2, child: singleMiniAvatar(parsedNames[2], 25, bg: const Color(0xFF475569))),
+        ],
+      );
+    }
+    else {
+      return Stack(
+        children: [
+          Positioned(left: 2, top: 2, child: singleMiniAvatar(parsedNames[0], 23, bg: const Color(0xFF94A3B8))),
+          Positioned(right: 2, top: 2, child: singleMiniAvatar(parsedNames[1], 23, bg: const Color(0xFF64748B))),
+          Positioned(left: 2, bottom: 2, child: singleMiniAvatar(parsedNames[2], 23, bg: const Color(0xFF475569))),
+          Positioned(right: 2, bottom: 2, child: singleMiniAvatar(parsedNames[3], 23, bg: const Color(0xFF334155))),
+        ],
+      );
+    }
   }
 
   @override
@@ -66,31 +196,15 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                   end: Alignment.bottomRight,
                   colors: [Color(0xFF4D48AF), Color(0xFF7C5CFC)],
                 ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(22),
-                  bottomRight: Radius.circular(22),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                      color: Color(0x1A4D48AF),
-                      blurRadius: 12,
-                      offset: Offset(0, 6))
-                ]),
+                borderRadius: BorderRadius.only(bottomLeft: Radius.circular(22), bottomRight: Radius.circular(22)),
+                boxShadow: [BoxShadow(color: Color(0x1A4D48AF), blurRadius: 12, offset: Offset(0, 6))]),
             child: Column(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Text(
-                      '채팅',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          fontFamily: 'Pretendard',
-                          letterSpacing: -0.3),
-                    ),
+                    const Text('채팅', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, fontFamily: 'Pretendard', letterSpacing: -0.3)),
                     Row(
                       children: [
                         PopupMenuButton<String>(
@@ -98,89 +212,46 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                             setState(() {
                               _sortType = value;
                               if (value == '최신 순') {
-                                ref.read(chatSortProvider.notifier).state =
-                                    ChatSortOrder.newest;
+                                ref.read(chatSortProvider.notifier).state = ChatSortOrder.newest;
                               } else {
-                                ref.read(chatSortProvider.notifier).state =
-                                    ChatSortOrder.oldest;
+                                ref.read(chatSortProvider.notifier).state = ChatSortOrder.oldest;
                               }
                             });
                           },
                           offset: const Offset(0, 36),
-                          constraints: const BoxConstraints(
-                              minWidth: 110, maxWidth: 110),
-                          color: Colors.white,
-                          elevation: 3,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
+                          constraints: const BoxConstraints(minWidth: 110, maxWidth: 110),
+                          color: Colors.white, elevation: 3,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           padding: EdgeInsets.zero,
                           itemBuilder: (context) => [
                             PopupMenuItem(
-                              enabled: false,
-                              height: 28,
-                              child: Container(
-                                alignment: Alignment.centerLeft,
-                                child: const Text('정렬 기준',
-                                    style: TextStyle(
-                                        color: Color(0xFF94A3B8),
-                                        fontSize: 10,
-                                        fontFamily: 'Pretendard',
-                                        fontWeight: FontWeight.bold)),
-                              ),
+                              enabled: false, height: 28,
+                              child: Container(alignment: Alignment.centerLeft, child: const Text('정렬 기준', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontFamily: 'Pretendard', fontWeight: FontWeight.bold))),
                             ),
-                            PopupMenuWidget(
-                              value: '최신 순',
-                              currentSort: _sortType,
-                              label: '최신 순',
-                            ),
-                            PopupMenuWidget(
-                              value: '안  읽음',
-                              currentSort: _sortType,
-                              label: '안  읽음',
-                            ),
+                            PopupMenuWidget(value: '최신 순', currentSort: _sortType, label: '최신 순'),
+                            PopupMenuWidget(value: '안  읽음', currentSort: _sortType, label: '안  읽음'),
                           ],
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.16),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                  color: Colors.white.withOpacity(0.1)),
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.16), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white.withOpacity(0.1))),
                             child: Row(
                               children: [
-                                Text(
-                                  _sortType,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: 'Pretendard'),
-                                ),
+                                Text(_sortType, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'Pretendard')),
                                 const SizedBox(width: 4),
-                                const Icon(Icons.tune_rounded,
-                                    color: Colors.white, size: 12),
+                                const Icon(Icons.tune_rounded, color: Colors.white, size: 12),
                               ],
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         IconButton(
-                          icon: const Icon(Icons.add_comment_rounded,
-                              color: Colors.white, size: 26),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.add_comment_rounded, color: Colors.white, size: 26),
+                          padding: EdgeInsets.zero, constraints: const BoxConstraints(),
                           onPressed: () {
                             showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              backgroundColor: Colors.transparent,
-                              builder: (_) => ChatAddScreen(
-                                  realToken: AuthStorage.accessToken),
-                            ).then((_) {
-                              ref.read(chatProvider.notifier).fetchRooms();
-                            });
+                              context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+                              builder: (_) => ChatAddScreen(realToken: AuthStorage.accessToken),
+                            ).then((_) { ref.read(chatProvider.notifier).fetchRooms(); });
                           },
                         ),
                       ],
@@ -190,93 +261,139 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                 const SizedBox(height: 24),
                 Container(
                   height: 46,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.16),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white.withOpacity(0.12)),
-                  ),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.16), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withOpacity(0.12))),
                   child: TextField(
                     controller: _searchController,
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value;
-                      });
-                    },
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontFamily: 'Pretendard'),
+                    onChanged: (value) { setState(() { _searchQuery = value; }); },
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontFamily: 'Pretendard'),
                     decoration: InputDecoration(
                       hintText: '대화방 이름을 검색해 보세요',
-                      hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.55),
-                          fontSize: 14,
-                          fontFamily: 'Pretendard'),
-                      prefixIcon: Icon(Icons.search_rounded,
-                          color: Colors.white.withOpacity(0.6), size: 20),
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 14, fontFamily: 'Pretendard'),
+                      prefixIcon: Icon(Icons.search_rounded, color: Colors.white.withOpacity(0.6), size: 20),
                       suffixIcon: _searchQuery.isNotEmpty
-                          ? GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _searchController.clear();
-                                  _searchQuery = '';
-                                });
-                              },
-                              child: const Icon(Icons.cancel_rounded,
-                                  color: Colors.white70, size: 18),
-                            )
+                          ? GestureDetector(onTap: () { setState(() { _searchController.clear(); _searchQuery = ''; }); }, child: const Icon(Icons.cancel_rounded, color: Colors.white70, size: 18))
                           : null,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
                 ),
               ],
             ),
           ),
+          
           Expanded(
-            child: filteredRooms.isEmpty
-                ? Center(
-                    child: Text(
-                      _searchQuery.isEmpty
-                          ? '참여 중인 채팅방이 존재하지 않습니다.'
-                          : '\'$_searchQuery\' 검색 결과방이 없습니다.',
-                      style: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 14,
-                          fontFamily: 'Pretendard'),
+            child: RefreshIndicator(
+              color: const Color(0xFF7C5CFC),
+              backgroundColor: Colors.white,
+              onRefresh: () async {
+                await ref.read(chatProvider.notifier).fetchRooms();
+              },
+              child: filteredRooms.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                        Center(child: Text(_searchQuery.isEmpty ? '참여 중인 채팅방이 존재하지 않습니다.' : '\'$_searchQuery\' 검색 결과방이 없습니다.', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14, fontFamily: 'Pretendard'))),
+                      ],
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                      itemCount: filteredRooms.length,
+                      itemBuilder: (context, index) => _buildPremiumDismissibleCard(filteredRooms[index]),
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                    itemCount: filteredRooms.length,
-                    itemBuilder: (context, index) {
-                      final room = filteredRooms[index];
-                      return _buildPremiumRoomCard(room);
-                    },
-                  ),
+            ),
           )
         ],
       ),
     );
   }
 
-  Widget _buildPremiumRoomCard(ChatModel room) {
+  Widget _buildPremiumDismissibleCard(ChatModel room) {
+    final int parsedRoomId = int.tryParse(room.id.toString()) ?? 0;
+
+    return Dismissible(
+      key: Key('room_${room.id}'),
+      direction: DismissDirection.endToStart, 
+      
+      // ── 🎯 [안전 교정 장치]: 손을 놓았을 때 즉시 삭제되지 않고 확인 패널의 동의 유무를 기다리게 지시 ──
+      confirmDismiss: (direction) async {
+        final bool? result = await _showLeaveConfirmDialog(room.name);
+        return result ?? false; // 나가기를 누르면 true를 반환하여 리스트에서 삭제 처리 돌입
+      },
+      
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF4D4D), 
+          borderRadius: BorderRadius.circular(18),
+        ),
+        alignment: Alignment.centerRight,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('방 나가기', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Pretendard')),
+            SizedBox(width: 8),
+            Icon(Icons.exit_to_app_rounded, color: Colors.white, size: 20),
+          ],
+        ),
+      ),
+      onDismissed: (direction) {
+        if (parsedRoomId > 0) {
+          _leaveRoomSilently(parsedRoomId);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('\'${room.name}\' 채팅방에서 퇴장했습니다.'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: const Color(0xFF1E2939),
+          ),
+        );
+      },
+      child: _buildPureCardBody(room, parsedRoomId),
+    );
+  }
+
+  Widget _buildPureCardBody(ChatModel room, int parsedRoomId) {
     bool isBot = room.type == ChatType.ai;
+    List<String> parsedDisplayLetters = [];
+    int derivedCount = 1;
+
+    try {
+      final dynamic modelRaw = room;
+      final List<dynamic> memberIds = modelRaw.memberIds ?? [];
+      final List<dynamic> humanIds = memberIds.where((id) => id.toString() != '-1').toList();
+
+      if (humanIds.isNotEmpty && modelRaw.userNames != null && modelRaw.userNames is Map) {
+        for (var id in humanIds) {
+          String name = modelRaw.userNames[id]?.toString() ?? '';
+          if (name.isNotEmpty) parsedDisplayLetters.add(name.substring(0, 1));
+        }
+        derivedCount = humanIds.length;
+      } else {
+        final List<String> nameTokens = room.name.split(RegExp(r'[,\s]+')).where((t) => t.trim().isNotEmpty).toList();
+        for (var token in nameTokens) {
+          if (token != 'tripto' && token != '트립토') {
+            parsedDisplayLetters.add(token.substring(0, 1));
+          }
+        }
+        derivedCount = parsedDisplayLetters.length;
+        if (derivedCount <= 0) derivedCount = 1;
+      }
+    } catch (_) {
+      derivedCount = 1;
+    }
+
+    if (parsedDisplayLetters.isEmpty) {
+      parsedDisplayLetters.add(isBot ? '🤖' : '나');
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFEDF2F7), width: 1.0),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF1E2939).withOpacity(0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFEDF2F7), width: 1.0), boxShadow: [
+        BoxShadow(color: const Color(0xFF1E2939).withOpacity(0.03), blurRadius: 10, offset: Offset(0, 4))
+      ]),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: ListTile(
@@ -287,88 +404,58 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                 builder: (_) => ChatRoomScreen(
                   title: room.name,
                   isBotRoom: isBot,
-                  roomId: int.tryParse(room.id.toString()) ?? 14,
+                  roomId: parsedRoomId, 
                 ),
               ),
             );
           },
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          leading: Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: isBot
-                    ? [const Color(0xFF10B981), const Color(0xFF059669)]
-                    : [const Color(0xFF818CF8), const Color(0xFF6366F1)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: Icon(
-              isBot ? Icons.auto_awesome_rounded : Icons.forum_rounded,
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          leading: _buildListCompositeAvatar(room, parsedDisplayLetters),
           title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Text(
-                  room.name,
-                  style: const TextStyle(
-                      color: Color(0xFF1E2939),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      fontFamily: 'Pretendard',
-                      letterSpacing: -0.4),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        room.name, 
+                        style: const TextStyle(color: Color(0xFF1E2939), fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Pretendard', letterSpacing: -0.4), 
+                        maxLines: 1, 
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (!isBot) ...[
+                      const SizedBox(width: 8), 
+                      Text(
+                        '$derivedCount', 
+                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontWeight: FontWeight.w500, fontFamily: 'Pretendard'),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(room.lastTime,
-                  style: const TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 11,
-                      fontFamily: 'Pretendard')),
+              const SizedBox(width: 12), 
+              Text(
+                room.lastTime, 
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontFamily: 'Pretendard'),
+                textAlign: TextAlign.right,
+              ),
             ],
           ),
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 6.0),
             child: Row(
               children: [
-                Expanded(
-                  child: Text(
-                    _getCleanLastMessage(
-                        room.lastMessage), // 🎯 가공 파서 연결 적용 부위[cite: 3]
-                    style: const TextStyle(
-                        color: Color(0xFF64748B),
-                        fontSize: 13,
-                        fontFamily: 'Pretendard'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
+                Expanded(child: Text(_getCleanLastMessage(room.lastMessage), style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontFamily: 'Pretendard'), maxLines: 1, overflow: TextOverflow.ellipsis)),
                 if (room.unreadCount > 0) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444), // 🔴 알람 배지 보존[cite: 3]
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${room.unreadCount}',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.bold),
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(10)),
+                    child: Text('${room.unreadCount}', style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: 'Pretendard', fontWeight: FontWeight.bold)),
                   ),
                 ]
               ],
@@ -381,30 +468,15 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 }
 
 class PopupMenuWidget extends PopupMenuEntry<String> {
-  final String value;
-  final String currentSort;
-  final String label;
-
-  const PopupMenuWidget({
-    super.key,
-    required this.value,
-    required this.currentSort,
-    required this.label,
-  });
-
-  @override
-  double get height => 32.0;
-
-  @override
-  bool represents(String? value) => value == this.value;
-
-  @override
-  PopupMenuWidgetState createState() => PopupMenuWidgetState();
+  final String value; final String currentSort; final String label;
+  const PopupMenuWidget({super.key, required this.value, required this.currentSort, required this.label});
+  @override double get height => 32.0;
+  @override bool represents(String? value) => value == this.value;
+  @override PopupMenuWidgetState createState() => PopupMenuWidgetState();
 }
 
 class PopupMenuWidgetState extends State<PopupMenuWidget> {
-  @override
-  Widget build(BuildContext context) {
+  @override Widget build(BuildContext context) {
     bool isSelected = widget.value == widget.currentSort;
     return InkWell(
       onTap: () => Navigator.pop(context, widget.value),
@@ -412,21 +484,9 @@ class PopupMenuWidgetState extends State<PopupMenuWidget> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
-            Icon(Icons.check_circle_rounded,
-                size: 14,
-                color:
-                    isSelected ? const Color(0xFF4D48AF) : Colors.transparent),
+            Icon(Icons.check_circle_rounded, size: 14, color: isSelected ? const Color(0xFF4D48AF) : Colors.transparent),
             const SizedBox(width: 8),
-            Text(
-              widget.label,
-              style: TextStyle(
-                  color: isSelected
-                      ? const Color(0xFF4D48AF)
-                      : const Color(0xFF334155),
-                  fontSize: 13,
-                  fontFamily: 'Pretendard',
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
-            ),
+            Text(widget.label, style: TextStyle(color: isSelected ? const Color(0xFF4D48AF) : const Color(0xFF334155), fontSize: 13, fontFamily: 'Pretendard', fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
           ],
         ),
       ),
