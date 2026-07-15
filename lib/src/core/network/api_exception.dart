@@ -1,5 +1,8 @@
+<<<<<<< HEAD
 import 'package:dio/dio.dart';
 
+=======
+>>>>>>> origin/chatting
 /// API 에러 타입 정의
 /// 화면에서 에러 종류에 따라 다른 메시지 표시
 class ApiException implements Exception {
@@ -42,6 +45,7 @@ class ApiException implements Exception {
   @override
   String toString() => 'ApiException($statusCode): $message';
 }
+<<<<<<< HEAD
 
 // 💡 안전하게 에러 메시지를 추출하는 함수
 String extractErrorMessage(dynamic data) {
@@ -74,3 +78,5 @@ Exception handleDioError(DioException e) {
 
   return ApiException.fromStatusCode(e.response?.statusCode ?? 500, message);
 }
+=======
+>>>>>>> origin/chatting

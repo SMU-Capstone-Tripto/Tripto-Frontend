@@ -2,7 +2,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/profile_model.dart';
 import '../../../core/network/dio_client.dart';
+<<<<<<< HEAD
 import '../../../core/network/api_exception.dart' hide handleDioError;
+=======
+import '../../../core/network/api_exception.dart';
+>>>>>>> origin/chatting
 
 class ProfileRepository {
   final Dio _dio;
@@ -20,11 +24,18 @@ class ProfileRepository {
 
   // ── 2. 내 정보 수정 (닉네임, 프로필 이미지 URL 등) ──
   Future<ProfileModel> updateMe(
+<<<<<<< HEAD
       {String? nickname, String? profile_image_url, String? birth}) async {
     try {
       final res = await _dio.patch('/auth/me', data: {
         if (nickname != null) 'nickname': nickname,
         if (birth != null) 'birth': birth,
+=======
+      {String? nickname, String? profile_image_url}) async {
+    try {
+      final res = await _dio.patch('/auth/me', data: {
+        if (nickname != null) 'nickname': nickname,
+>>>>>>> origin/chatting
         if (profile_image_url != null)
           'profile_image_url': profile_image_url, // 프로필 이미지 URL 수정 파라미터 추가
       });
@@ -67,6 +78,7 @@ class ProfileRepository {
       throw handleDioError(e);
     }
   }
+<<<<<<< HEAD
 
   // ── 5. 비밀번호 변경용 인증번호 발송 요청 ──
   Future<void> requestVerificationCode(String email) async {
@@ -79,9 +91,15 @@ class ProfileRepository {
       throw handleDioError(e);
     }
   }
+=======
+>>>>>>> origin/chatting
 }
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
   final dio = ref.watch(dioClientProvider).dio;
   return ProfileRepository(dio);
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> origin/chatting

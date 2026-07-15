@@ -1,11 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+<<<<<<< HEAD
+=======
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    
+>>>>>>> origin/chatting
     <application
         android:label="tripto"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
+<<<<<<< HEAD
+=======
+        
+>>>>>>> origin/chatting
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -15,15 +24,24 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+<<<<<<< HEAD
+=======
+            
+>>>>>>> origin/chatting
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+<<<<<<< HEAD
+=======
+              
+>>>>>>> origin/chatting
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+<<<<<<< HEAD
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
@@ -34,10 +52,22 @@
     </application>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+=======
+        
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+    
+>>>>>>> origin/chatting
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
+<<<<<<< HEAD
 </manifest>
+=======
+</manifest>
+>>>>>>> origin/chatting

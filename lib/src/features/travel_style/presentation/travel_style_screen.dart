@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+<<<<<<< HEAD
 import '../../home/presentation/screens/navigation_screen.dart';
 import '../../../core/network/auth_storage.dart';
+=======
+import '../../home/presentation/main_home_screen.dart';
+import '../../../../src/core/auth_storage.dart';
+>>>>>>> origin/chatting
 import 'package:go_router/go_router.dart';
 
 /// 신규 가입 전용 유저 여행 성향 필터 지표 추출 위젯.

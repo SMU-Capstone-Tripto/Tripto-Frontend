@@ -312,4 +312,8 @@ class _Config {
   final IconData icon;
   final Color bgColor, color;
   const _Config(this.icon, this.bgColor, this.color);
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/chatting

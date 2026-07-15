@@ -15,6 +15,12 @@ void main() async {
 
   // 2. 카카오 로그인 SDK 공식 초기화 (AuthRepository 삭제)
   KakaoSdk.init(
+<<<<<<< HEAD
+=======
+    // 모바일 앱(Android/iOS)은 주로 Native App Key를 사용합니다.
+    // nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '',
+
+>>>>>>> origin/chatting
     // 만약 팀원이 JavaScript 키로 구현해 두었다면 아래 줄을 활성화하세요.
     javaScriptAppKey: dotenv.env['KAKAO_JS_KEY'] ?? '',
   );
@@ -45,4 +51,8 @@ class TriptoApp extends ConsumerWidget {
       routerConfig: router,
     );
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/chatting

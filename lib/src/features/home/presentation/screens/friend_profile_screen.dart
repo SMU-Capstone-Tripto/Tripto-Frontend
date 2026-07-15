@@ -248,4 +248,8 @@ class _PastTrip {
       required this.date,
       required this.location,
       required this.imageUrl});
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/chatting

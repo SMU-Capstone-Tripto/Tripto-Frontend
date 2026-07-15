@@ -500,4 +500,8 @@ class _RecentItem extends StatelessWidget {
       ],
     );
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/chatting

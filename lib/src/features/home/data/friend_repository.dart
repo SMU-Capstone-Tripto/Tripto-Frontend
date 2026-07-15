@@ -2,13 +2,18 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../home/domain/friend_model.dart';
 import '../../home/domain/friend_request_model.dart';
+<<<<<<< HEAD
 import '../../../core/network/dio_client.dart' hide handleDioError;
+=======
+import '../../../core/network/dio_client.dart';
+>>>>>>> origin/chatting
 import '../../../core/network/api_exception.dart';
 
 class FriendRepository {
   final Dio _dio;
   FriendRepository(this._dio);
 
+<<<<<<< HEAD
   Future<List<FriendModel>> getFriends() async {
     try {
       final res = await _dio.get('/friends/list');
@@ -19,14 +24,29 @@ class FriendRepository {
         // e 자체를 넘기면 FriendModel.fromJson에서 알아서 'user' 키를 찾습니다.
         return FriendModel.fromJson(e as Map<String, dynamic>);
       }).toList();
+=======
+  // ── 1. 친구 목록 조회 (GET) ──
+  Future<List<FriendModel>> getFriends() async {
+    try {
+      final res = await _dio.get('/friends/list');
+
+      print('😎 [디버그] 서버가 준 친구 목록: ${res.data}');
+
+      final list = res.data as List;
+      return list.map((e) => FriendModel.fromJson(e)).toList();
+>>>>>>> origin/chatting
     } on DioException catch (e) {
       throw handleDioError(e);
     }
   }
 
   // ── 2. 친구 삭제 (DELETE) ──
+<<<<<<< HEAD
   Future<void> deleteFriend(int friendId) async {
     // String -> int로 변경
+=======
+  Future<void> deleteFriend(String friendId) async {
+>>>>>>> origin/chatting
     try {
       await _dio.delete('/friends/$friendId');
     } on DioException catch (e) {
@@ -89,4 +109,8 @@ class FriendRepository {
 final friendRepositoryProvider = Provider<FriendRepository>((ref) {
   final dio = ref.watch(dioClientProvider).dio;
   return FriendRepository(dio);
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> origin/chatting

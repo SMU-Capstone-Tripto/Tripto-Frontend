@@ -3,18 +3,24 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tripto/src/common_widgets/error_state_widget.dart';
 import 'package:tripto/src/constants/app_theme.dart';
+<<<<<<< HEAD
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../../../core/network/auth_storage.dart';
 import '../../../auth/presentation/login_screen.dart';
 import '../../../home/presentation/home_provider.dart';
+=======
+>>>>>>> origin/chatting
 import '../screens/saved_schedule_screen.dart';
 import '../profile_provider.dart';
 import '../screens/saved_places_screen.dart';
 import '../screens/app_info_screen.dart';
 import '../screens/notification_setting_screen.dart';
 import '../screens/profile_edit_screen.dart';
+<<<<<<< HEAD
 import '../../../../core/network/token_storage.dart';
 import 'package:go_router/go_router.dart';
+=======
+>>>>>>> origin/chatting
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -110,6 +116,7 @@ class ProfileScreen extends ConsumerWidget {
                   ]),
                   const SizedBox(height: 8),
 
+<<<<<<< HEAD
                   // 로그아웃 버튼 수정
                   _LogoutButton(onTap: () async {
                     final confirm = await showDialog<bool>(
@@ -171,6 +178,10 @@ class ProfileScreen extends ConsumerWidget {
                       }
                     }
                   }),
+=======
+                  // 로그아웃
+                  _LogoutButton(onTap: () {/* TODO */}),
+>>>>>>> origin/chatting
 
                   // 버전 정보
                   const _AppVersion(),
