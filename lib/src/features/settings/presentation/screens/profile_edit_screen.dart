@@ -18,10 +18,6 @@ class ProfileEditScreen extends ConsumerStatefulWidget {
 class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   final _nicknameController = TextEditingController();
   final _birthController = TextEditingController();
-<<<<<<< HEAD
-=======
-  final _phoneController = TextEditingController();
->>>>>>> origin/chatting
   final _emailController = TextEditingController();
 
   String _uniqueId = '';
@@ -37,16 +33,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       // 텍스트 필드와 텍스트 위젯에 서버 데이터 꽂아넣기
       _nicknameController.text = profile.nickname;
       _uniqueId = profile.unique_id;
-<<<<<<< HEAD
       _emailController.text = profile.email;
-=======
-
-      // (참고) 현재 ProfileModel(profile_model.dart)에는 생년월일, 전화번호, 이메일 필드가 없습니다.
-      // 나중에 백엔드에 해당 항목들이 추가되면, 모델을 업데이트한 뒤 아래처럼 연결해주시면 됩니다.
-      // _birthController.text = profile.birth ?? '';
-      // _phoneController.text = profile.phone ?? '';
-      // _emailController.text = profile.email ?? '';
->>>>>>> origin/chatting
     }
   }
 
@@ -54,10 +41,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   void dispose() {
     _nicknameController.dispose();
     _birthController.dispose();
-<<<<<<< HEAD
-=======
-    _phoneController.dispose();
->>>>>>> origin/chatting
     _emailController.dispose();
     super.dispose();
   }
@@ -135,21 +118,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                             controller: _nicknameController,
                             hint: '닉네임을 입력하세요'),
                         const SizedBox(height: 14),
-<<<<<<< HEAD
-=======
-                        _FormField(
-                            label: '생년월일',
-                            controller: _birthController,
-                            hint: 'YYYY-MM-DD',
-                            keyboardType: TextInputType.datetime),
-                        const SizedBox(height: 14),
-                        _FormField(
-                            label: '전화번호',
-                            controller: _phoneController,
-                            hint: '010-0000-0000',
-                            keyboardType: TextInputType.phone),
-                        const SizedBox(height: 14),
->>>>>>> origin/chatting
 
                         // 고유 ID (읽기 전용 + 복사)
                         Column(
@@ -203,11 +171,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                         const SizedBox(height: 14),
 
                         _FormField(
-<<<<<<< HEAD
                             label: '이메일',
-=======
-                            label: '이메일 (선택)',
->>>>>>> origin/chatting
                             controller: _emailController,
                             hint: 'example@email.com',
                             keyboardType: TextInputType.emailAddress),
@@ -338,8 +302,4 @@ class _FormField extends StatelessWidget {
       ],
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/chatting

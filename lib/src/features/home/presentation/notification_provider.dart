@@ -132,8 +132,4 @@ final unreadCountProvider = Provider<int>((ref) {
     data: (notifs) => notifs.where((n) => !n.isRead).length,
     orElse: () => 0,
   );
-<<<<<<< HEAD
 });
-=======
-});
->>>>>>> origin/chatting

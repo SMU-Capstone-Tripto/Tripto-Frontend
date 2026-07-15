@@ -6,13 +6,9 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/network/token_storage.dart';
 import 'package:go_router/go_router.dart';
-<<<<<<< HEAD
-import '../../../core/network/auth_storage.dart';
-=======
 
 // 🔥 [근본 해결]: 채팅 레이어가 열쇠를 빌려 쓰는 AuthStorage 임포트 추가
 import '../../../core/auth_storage.dart';
->>>>>>> origin/chatting
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -34,11 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _goToMain() {
     if (!mounted) return;
-<<<<<<< HEAD
-    context.go('/home'); // 👈 GoRouter에 등록된 홈 화면 주소로 이동 (주소는 설정에 맞게 변경)
-=======
     context.go('/home'); // 👈 GoRouter에 등록된 홈 화면 주소로 이동
->>>>>>> origin/chatting
   }
 
   Future<void> _handleLocalLogin() async {
@@ -69,31 +61,17 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
 
-<<<<<<< HEAD
-=======
         // 🔥 [근본 해결 1]: 일반 로그인 성공 시 AuthStorage에도 토큰 리얼타임 수혈 동기화
         AuthStorage.accessToken = responseData['access_token'];
         AuthStorage.refreshToken = responseData['refresh_token'];
 
->>>>>>> origin/chatting
         await TokenStorage.saveTokens(
           accessToken: responseData['access_token'],
           refreshToken: responseData['refresh_token'],
           userId: responseData['user_id']?.toString() ?? '',
         );
 
-<<<<<<< HEAD
-        AuthStorage.accessToken = responseData['access_token'];
-        AuthStorage.refreshToken = responseData['refresh_token'];
-
-        await Future.delayed(const Duration(milliseconds: 100));
-
-        if (mounted) {
-          _goToMain();
-        }
-=======
         _goToMain();
->>>>>>> origin/chatting
       } else {
         final errorData = jsonDecode(response.body);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -120,26 +98,16 @@ class _LoginScreenState extends State<LoginScreen> {
           initialUrl: url,
           onTokenReceived:
               (accessToken, refreshToken, email, isProfileComplete) async {
-<<<<<<< HEAD
-=======
-            
             // 🔥 [근본 해결 2]: 소셜 로그인 성공 및 웹뷰 콜백 수신 시 AuthStorage에 토큰 수혈 동기화
             AuthStorage.accessToken = accessToken;
             AuthStorage.refreshToken = refreshToken;
 
->>>>>>> origin/chatting
             await TokenStorage.saveTokens(
               accessToken: accessToken,
               refreshToken: refreshToken,
               userId: email, // 이메일을 userId로 저장 (필요에 따라 변경 가능)
             );
 
-<<<<<<< HEAD
-            AuthStorage.accessToken = accessToken;
-            AuthStorage.refreshToken = refreshToken;
-
-=======
->>>>>>> origin/chatting
             if (mounted) {
               // 🛠️ 정밀 필터링: 이미 닉네임 작성을 마친 기존 유저라면 메인 홈으로 바로 진입!
               if (isProfileComplete) {
@@ -515,12 +483,6 @@ class _SocialLoginWebViewState extends State<SocialLoginWebView> {
                     userEmail = userData['email'] ?? '';
                     String nickname = userData['nickname'] ?? '';
 
-<<<<<<< HEAD
-                    // ── 🛠️ 오류 해결 마스터 알고리즘 ──
-                    // 카카오 가입 시 백엔드에서 강제 부여하는 접두사인 "카카오유저" 문자열을 포함하고 있는지 체크합니다.
-                    // 만약 가입 후 프로필에서 자신의 진짜 고유 닉네임으로 한 번이라도 변경했다면 이 조건문을 통과하여 완료 상태로 인식합니다.
-=======
->>>>>>> origin/chatting
                     if (nickname.isNotEmpty && !nickname.startsWith('카카오유저')) {
                       isProfileComplete = true;
                     }
@@ -565,8 +527,4 @@ class _SocialLoginWebViewState extends State<SocialLoginWebView> {
       ),
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/chatting

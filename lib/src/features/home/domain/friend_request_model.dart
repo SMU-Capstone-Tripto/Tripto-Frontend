@@ -21,8 +21,4 @@ class FriendRequestModel {
           FriendModel.fromJson(json['requester'] as Map<String, dynamic>),
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/chatting

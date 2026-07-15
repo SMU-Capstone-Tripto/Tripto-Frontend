@@ -148,8 +148,4 @@ class _MetaItem extends StatelessWidget {
       ],
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/chatting

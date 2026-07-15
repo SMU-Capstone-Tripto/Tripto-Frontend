@@ -65,8 +65,4 @@ class MainHomeScreen extends StatelessWidget {
       ),
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/chatting

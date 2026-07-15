@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-<<<<<<< HEAD
 import '../../../core/network/auth_storage.dart'; // 공통 URL 저장소 경로 연동
-=======
-import '../../../core/auth_storage.dart'; // 공통 URL 저장소 경로 연동
->>>>>>> origin/chatting
 
 /// 사용자 비밀번호 찾기 및 즉시 재설정 시퀀스 위젯.
 class ForgotPasswordScreen extends StatefulWidget {
@@ -27,23 +23,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _pwConfirmController = TextEditingController();
 
   bool _isValidEmail(String email) {
-<<<<<<< HEAD
     return RegExp(
             r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+")
-=======
-    return RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+")
->>>>>>> origin/chatting
         .hasMatch(email);
   }
 
   /// 백엔드 정규식과 매칭되는 대소문자, 숫자, 특수문자(@$!%*?&) 포함 8자 이상 검증 규칙
   bool _isValidPassword(String password) {
-<<<<<<< HEAD
     final regex = RegExp(
         r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$');
-=======
-    final regex = RegExp(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$');
->>>>>>> origin/chatting
     return regex.hasMatch(password);
   }
 
@@ -52,12 +40,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (_currentStep == 0) {
       return _isEmailSent && _codeController.text.trim().isNotEmpty;
     } else {
-<<<<<<< HEAD
       return _isValidPassword(_pwController.text) &&
           _pwController.text == _pwConfirmController.text;
-=======
-      return _isValidPassword(_pwController.text) && _pwController.text == _pwConfirmController.text;
->>>>>>> origin/chatting
     }
   }
 
@@ -179,31 +163,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-<<<<<<< HEAD
         title: const Text('변경 완료',
             style: TextStyle(
                 fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
         content: const Text('비밀번호 재설정이 성공적으로 완료되었습니다.\n새로운 비밀번호로 로그인해 주세요.',
             style: TextStyle(fontFamily: 'Pretendard')),
-=======
-        title: const Text('변경 완료', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
-        content: const Text('비밀번호 재설정이 성공적으로 완료되었습니다.\n새로운 비밀번호로 로그인해 주세요.', style: TextStyle(fontFamily: 'Pretendard')),
->>>>>>> origin/chatting
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context); // 알림창 닫기
               Navigator.pop(context); // 로그인 화면으로 복귀
             },
-<<<<<<< HEAD
             child: const Text('확인',
                 style: TextStyle(
                     color: Color(0xFF6241D9),
                     fontWeight: FontWeight.bold,
                     fontFamily: 'Pretendard')),
-=======
-            child: const Text('확인', style: TextStyle(color: Color(0xFF6241D9), fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
->>>>>>> origin/chatting
           ),
         ],
       ),
@@ -247,7 +222,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               Column(
                 children: [
                   Padding(
-<<<<<<< HEAD
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     child: Row(
@@ -255,13 +229,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         IconButton(
                           icon: const Icon(Icons.arrow_back_ios_new,
                               color: Colors.white, size: 22),
-=======
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 22),
->>>>>>> origin/chatting
                           onPressed: _prevStep,
                         ),
                       ],
@@ -283,15 +250,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       SizedBox(height: 8),
                       Text(
                         '비밀번호 분실 계정의 신규 인증 및 재설정을 진행합니다',
-<<<<<<< HEAD
                         style: TextStyle(
                             color: Colors.white70,
                             fontSize: 13,
                             fontFamily: 'Pretendard',
                             fontWeight: FontWeight.w500),
-=======
-                        style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Pretendard', fontWeight: FontWeight.w500),
->>>>>>> origin/chatting
                       ),
                     ],
                   ),
@@ -314,14 +277,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 physics: const BouncingScrollPhysics(),
                                 child: IndexedStack(
                                   index: _currentStep,
-<<<<<<< HEAD
                                   children: [
                                     _stepEmailVerification(),
                                     _stepNewPasswordInput()
                                   ],
-=======
-                                  children: [ _stepEmailVerification(), _stepNewPasswordInput() ],
->>>>>>> origin/chatting
                                 ),
                               ),
                             ),
@@ -335,12 +294,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ],
               ),
               if (_isLoading)
-<<<<<<< HEAD
                 const Center(
                     child: CircularProgressIndicator(color: Colors.white)),
-=======
-                const Center(child: CircularProgressIndicator(color: Colors.white)),
->>>>>>> origin/chatting
             ],
           ),
         ),
@@ -352,7 +307,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget _stepEmailVerification() {
     bool isValid = _isValidEmail(_emailController.text.trim());
     return Column(
-<<<<<<< HEAD
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('비밀번호 찾기',
@@ -361,11 +315,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
                 fontFamily: 'Pretendard')),
-=======
-      crossAxisAlignment: CrossAxisAlignment.start, 
-      children: [
-        const Text('비밀번호 찾기', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Pretendard')),
->>>>>>> origin/chatting
         const SizedBox(height: 25),
         Row(
           children: [
@@ -373,19 +322,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-<<<<<<< HEAD
                   color: Colors.white.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(14),
-=======
-                  color: Colors.white.withOpacity(0.08), 
-                  borderRadius: BorderRadius.circular(14), 
->>>>>>> origin/chatting
                   border: Border.all(color: Colors.white12),
                 ),
                 child: TextField(
                   controller: _emailController,
                   onChanged: (v) => setState(() {}),
-<<<<<<< HEAD
                   style: const TextStyle(
                       color: Colors.white, fontFamily: 'Pretendard'),
                   decoration: const InputDecoration(
@@ -394,12 +337,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         color: Colors.white24,
                         fontSize: 14,
                         fontFamily: 'Pretendard'),
-=======
-                  style: const TextStyle(color: Colors.white, fontFamily: 'Pretendard'),
-                  decoration: const InputDecoration(
-                    hintText: '가입한 이메일 주소 입력', 
-                    hintStyle: TextStyle(color: Colors.white24, fontSize: 14, fontFamily: 'Pretendard'), 
->>>>>>> origin/chatting
                     border: InputBorder.none,
                   ),
                 ),
@@ -411,7 +348,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               child: ElevatedButton(
                 onPressed: isValid ? () => _sendVerificationCode() : null,
                 style: ElevatedButton.styleFrom(
-<<<<<<< HEAD
                   backgroundColor: Colors.white24,
                   foregroundColor: Colors.white,
                   elevation: 0,
@@ -421,19 +357,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 child: Text(_isEmailSent ? '재전송' : '전송',
                     style: const TextStyle(
                         fontFamily: 'Pretendard', fontWeight: FontWeight.w600)),
-=======
-                  backgroundColor: Colors.white24, 
-                  foregroundColor: Colors.white, 
-                  elevation: 0, 
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text(_isEmailSent ? '재전송' : '전송', style: const TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w600)),
->>>>>>> origin/chatting
               ),
             ),
           ],
         ),
-<<<<<<< HEAD
         if (_emailController.text.isNotEmpty &&
             !_isValidEmail(_emailController.text.trim()))
           const Padding(
@@ -452,33 +379,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   fontSize: 13,
                   fontFamily: 'Pretendard',
                   fontWeight: FontWeight.w600)),
-=======
-        if (_emailController.text.isNotEmpty && !_isValidEmail(_emailController.text.trim()))
-          const Padding(
-            padding: EdgeInsets.only(top: 8), 
-            child: Text('이메일 형식에 맞게 입력해주세요.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontFamily: 'Pretendard')),
-          ),
-        if (_isEmailSent) ...[
-          const SizedBox(height: 20),
-          const Text('인증번호 입력', style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Pretendard', fontWeight: FontWeight.w600)),
->>>>>>> origin/chatting
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-<<<<<<< HEAD
               color: Colors.white.withOpacity(0.08),
               borderRadius: BorderRadius.circular(14),
-=======
-              color: Colors.white.withOpacity(0.08), 
-              borderRadius: BorderRadius.circular(14), 
->>>>>>> origin/chatting
               border: Border.all(color: Colors.white12),
             ),
             child: TextField(
               controller: _codeController,
               onChanged: (v) => setState(() {}),
-<<<<<<< HEAD
               style: const TextStyle(
                   color: Colors.white, fontFamily: 'Pretendard'),
               decoration: const InputDecoration(
@@ -487,12 +398,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     color: Colors.white24,
                     fontSize: 14,
                     fontFamily: 'Pretendard'),
-=======
-              style: const TextStyle(color: Colors.white, fontFamily: 'Pretendard'),
-              decoration: const InputDecoration(
-                hintText: '인증번호 6자리 입력', 
-                hintStyle: TextStyle(color: Colors.white24, fontSize: 14, fontFamily: 'Pretendard'), 
->>>>>>> origin/chatting
                 border: InputBorder.none,
               ),
             ),
@@ -508,7 +413,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-<<<<<<< HEAD
         const Text('새 비밀번호 설정',
             style: TextStyle(
                 fontSize: 22,
@@ -526,20 +430,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               color: Colors.white.withOpacity(0.08),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Colors.white12)),
-=======
-        const Text('새 비밀번호 설정', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Pretendard')),
-        const SizedBox(height: 12),
-        const Text('※ 영문 대소문자, 숫자, 특수문자 포함 8자 이상 필수', style: TextStyle(color: Colors.white60, fontSize: 12, fontFamily: 'Pretendard')),
-        const SizedBox(height: 25),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white12)), 
->>>>>>> origin/chatting
           child: TextField(
             controller: _pwController,
             onChanged: (v) => setState(() {}),
             obscureText: true,
-<<<<<<< HEAD
             style:
                 const TextStyle(color: Colors.white, fontFamily: 'Pretendard'),
             decoration: const InputDecoration(
@@ -566,23 +460,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               color: Colors.white.withOpacity(0.08),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Colors.white12)),
-=======
-            style: const TextStyle(color: Colors.white, fontFamily: 'Pretendard'),
-            decoration: const InputDecoration(hintText: '새 비밀번호를 입력해주세요', hintStyle: TextStyle(color: Colors.white24, fontSize: 14, fontFamily: 'Pretendard'), border: InputBorder.none),
-          ),
-        ),
-        if (_pwController.text.isNotEmpty && !isPwValid)
-          const Padding(padding: EdgeInsets.only(top: 8), child: Text('대소문자, 숫자, 특수문자를 포함하여 8자 이상 입력해주세요.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontFamily: 'Pretendard'))),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white12)), 
->>>>>>> origin/chatting
           child: TextField(
             controller: _pwConfirmController,
             onChanged: (v) => setState(() {}),
             obscureText: true,
-<<<<<<< HEAD
             style:
                 const TextStyle(color: Colors.white, fontFamily: 'Pretendard'),
             decoration: const InputDecoration(
@@ -603,14 +484,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       color: Colors.orangeAccent,
                       fontSize: 12,
                       fontFamily: 'Pretendard'))),
-=======
-            style: const TextStyle(color: Colors.white, fontFamily: 'Pretendard'),
-            decoration: const InputDecoration(hintText: '새 비밀번호를 한 번 더 입력해주세요', hintStyle: TextStyle(color: Colors.white24, fontSize: 14, fontFamily: 'Pretendard'), border: InputBorder.none),
-          ),
-        ),
-        if (_pwConfirmController.text.isNotEmpty && _pwController.text != _pwConfirmController.text)
-          const Padding(padding: EdgeInsets.only(top: 8), child: Text('새 비밀번호가 일치하지 않습니다.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontFamily: 'Pretendard'))),
->>>>>>> origin/chatting
       ],
     );
   }
@@ -618,40 +491,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   /// 하단 애니메이션 작동 액션 버튼
   Widget _buildActionButton() {
     return GestureDetector(
-<<<<<<< HEAD
       onTapDown:
           _isNextEnabled ? (_) => setState(() => _buttonScale = 0.96) : null,
       onTapUp:
           _isNextEnabled ? (_) => setState(() => _buttonScale = 1.0) : null,
       onTapCancel:
           _isNextEnabled ? () => setState(() => _buttonScale = 1.0) : null,
-=======
-      onTapDown: _isNextEnabled ? (_) => setState(() => _buttonScale = 0.96) : null,
-      onTapUp: _isNextEnabled ? (_) => setState(() => _buttonScale = 1.0) : null,
-      onTapCancel: _isNextEnabled ? () => setState(() => _buttonScale = 1.0) : null,
->>>>>>> origin/chatting
       child: AnimatedScale(
         scale: _buttonScale,
         duration: const Duration(milliseconds: 100),
         child: Opacity(
           opacity: _isNextEnabled ? 1.0 : 0.5,
           child: ElevatedButton(
-<<<<<<< HEAD
             onPressed: _isNextEnabled
                 ? (_currentStep == 0
                     ? () => _verifyCodeAndNext()
                     : () => _submitPasswordReset())
-=======
-            onPressed: _isNextEnabled 
-                ? (_currentStep == 0 ? () => _verifyCodeAndNext() : () => _submitPasswordReset())
->>>>>>> origin/chatting
                 : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: const Color(0xFF4A34A4),
               minimumSize: const Size(double.infinity, 58),
               elevation: _isNextEnabled ? 4 : 0,
-<<<<<<< HEAD
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30)),
             ),
@@ -661,21 +522,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                   fontFamily: 'Pretendard'),
-=======
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-            ),
-            child: Text(
-              _currentStep == 0 ? '인증번호 확인' : '비밀번호 변경 완료', 
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Pretendard'),
->>>>>>> origin/chatting
             ),
           ),
         ),
       ),
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/chatting

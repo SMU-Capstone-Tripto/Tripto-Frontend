@@ -42,8 +42,4 @@ class NotificationModel {
         hasFriendAction: hasFriendAction ?? this.hasFriendAction,
         title: '',
       );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/chatting

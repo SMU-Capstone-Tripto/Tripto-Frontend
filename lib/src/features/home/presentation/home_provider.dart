@@ -1,10 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../home/domain/friend_model.dart';
 import '../data/friend_repository.dart';
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/chatting
 export 'package:tripto/src/features/schedule/presentation/schedule_provider.dart'
     show nextTripProvider;
 
@@ -19,7 +15,6 @@ class FriendNotifier extends AsyncNotifier<List<FriendModel>> {
   }
 
   // 2. 친구 삭제 (DELETE)
-<<<<<<< HEAD
   Future<void> removeFriend(int id) async {
     // 파라미터 타입 변경
     try {
@@ -30,17 +25,6 @@ class FriendNotifier extends AsyncNotifier<List<FriendModel>> {
         final currentList = state.value!;
         // uniqueId 대신 friendId로 비교하도록 변경
         state = AsyncData(currentList.where((f) => f.friendId != id).toList());
-=======
-  Future<void> removeFriend(String id) async {
-    try {
-      final repository = ref.read(friendRepositoryProvider);
-      await repository.deleteFriend(id);
-
-      // 성공 시 즉시 UI 반영 (Optimistic Update)
-      if (state.hasValue) {
-        final currentList = state.value!;
-        state = AsyncData(currentList.where((f) => f.uniqueId != id).toList());
->>>>>>> origin/chatting
       }
     } catch (e) {
       rethrow;
@@ -73,8 +57,4 @@ final friendSearchProvider = FutureProvider.autoDispose
     .family<FriendModel?, String>((ref, uniqueId) async {
   final repository = ref.watch(friendRepositoryProvider);
   return repository.searchUserByUniqueId(uniqueId);
-<<<<<<< HEAD
 });
-=======
-});
->>>>>>> origin/chatting

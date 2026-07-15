@@ -75,8 +75,4 @@ final nextTripProvider = Provider<AsyncValue<TravelModel?>>((ref) {
     loading: () => const AsyncLoading(),
     error: (e, st) => AsyncError(e, st),
   );
-<<<<<<< HEAD
 });
-=======
-});
->>>>>>> origin/chatting

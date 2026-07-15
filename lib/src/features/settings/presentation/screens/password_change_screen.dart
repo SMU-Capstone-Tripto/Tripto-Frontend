@@ -6,10 +6,7 @@ import 'package:tripto/src/constants/app_theme.dart';
 import '../../data/profile_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/profile_repository.dart';
-<<<<<<< HEAD
 import '../profile_provider.dart';
-=======
->>>>>>> origin/chatting
 
 class PasswordChangeScreen extends ConsumerStatefulWidget {
   const PasswordChangeScreen({super.key});
@@ -29,7 +26,6 @@ class _PasswordChangeScreenState extends ConsumerState<PasswordChangeScreen> {
   bool _newObscure = true;
   bool _confirmObscure = true;
 
-<<<<<<< HEAD
   // 💡 1. 인증번호 발송 상태 관리를 위한 변수 추가
   bool _isCodeSending = false;
   bool _codeSent = false;
@@ -65,8 +61,6 @@ class _PasswordChangeScreenState extends ConsumerState<PasswordChangeScreen> {
     }
   }
 
-=======
->>>>>>> origin/chatting
   // 비밀번호 강도 (0~4)
   int get _strength {
     final pw = _newPwCtrl.text;
@@ -150,7 +144,6 @@ class _PasswordChangeScreenState extends ConsumerState<PasswordChangeScreen> {
                     const SizedBox(height: 16),
 
                     // 인증번호 필드
-<<<<<<< HEAD
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -192,14 +185,6 @@ class _PasswordChangeScreenState extends ConsumerState<PasswordChangeScreen> {
                         ),
                       ],
                     ),
-=======
-                    _VerificationField(
-                        label: '인증번호',
-                        controller: _verificationCodeCtrl,
-                        hint: '이메일로 발송된 6자리 번호',
-                        onChanged: (_) => setState(() {})),
-                    const SizedBox(height: 16),
->>>>>>> origin/chatting
 
                     // 새 비밀번호
                     _PwField(
@@ -441,8 +426,4 @@ class _VerificationField extends StatelessWidget {
       ],
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/chatting

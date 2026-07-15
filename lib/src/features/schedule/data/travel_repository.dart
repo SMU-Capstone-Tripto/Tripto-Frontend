@@ -2,11 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/travel_model.dart';
 import '../../../core/network/dio_client.dart';
-<<<<<<< HEAD
 import '../../../core/network/api_exception.dart' hide handleDioError;
-=======
-import '../../../core/network/api_exception.dart';
->>>>>>> origin/chatting
 
 class TravelRepository {
   final Dio _dio;
@@ -15,16 +11,7 @@ class TravelRepository {
   // ── 1. 내 여행 목록 조회 (GET) ──
   Future<List<TravelModel>> getTravels() async {
     try {
-<<<<<<< HEAD
       final res = await _dio.get('/travels');
-=======
-      const ownerId = 1;
-
-      final res = await _dio.get(
-        '/travels',
-        queryParameters: {'owner_id': ownerId}, // 👈 쿼리 파라미터 추가!
-      );
->>>>>>> origin/chatting
 
       final list = res.data as List;
       return list
@@ -59,11 +46,8 @@ final travelRepositoryProvider = Provider<TravelRepository>((ref) {
   final dio = ref.watch(dioClientProvider).dio;
   return TravelRepository(dio);
 });
-<<<<<<< HEAD
 
 // 화면에서 데이터를 읽어올 때 사용할 Provider
 final savedTravelsProvider = FutureProvider<List<TravelModel>>((ref) async {
   return ref.watch(travelRepositoryProvider).getTravels();
 });
-=======
->>>>>>> origin/chatting
