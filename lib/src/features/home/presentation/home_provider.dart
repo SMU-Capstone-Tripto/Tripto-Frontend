@@ -14,7 +14,7 @@ class FriendNotifier extends AsyncNotifier<List<FriendModel>> {
     return repository.getFriends();
   }
 
-  // 2. 친구 삭제 (DELETE)
+  // 친구 삭제 (DELETE)
   Future<void> removeFriend(int friendshipId) async {
     // 파라미터 타입 변경
     try {
@@ -32,7 +32,7 @@ class FriendNotifier extends AsyncNotifier<List<FriendModel>> {
     }
   }
 
-  // 3. 친구 추가 (POST)
+  // 친구 추가 (POST)
   Future<void> addFriend(String targetUniqueId) async {
     try {
       final repository = ref.read(friendRepositoryProvider);

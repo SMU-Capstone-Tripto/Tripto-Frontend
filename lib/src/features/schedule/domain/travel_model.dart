@@ -1,7 +1,7 @@
 enum TripStatus { upcoming, past }
 
 class TravelModel {
-  final String travel_id;
+  final int travel_id;
   final String title;
   final String destination;
   final DateTime start_date;
@@ -35,17 +35,30 @@ class TravelModel {
     return '${fmt(start_date)} – ${end_date.month.toString().padLeft(2, '0')}.${end_date.day.toString().padLeft(2, '0')}';
   }
 
-  factory TravelModel.fromJson(Map<String, dynamic> json) => TravelModel(
-        travel_id: json['travel_id'] as String,
-        title: json['title'] as String,
-        destination: json['destination'] as String,
-        start_date: DateTime.parse(json['start_date'] as String),
-        end_date: DateTime.parse(json['end_date'] as String),
-        status: (json['status'] as String) == 'upcoming'
-            ? TripStatus.upcoming
-            : TripStatus.past,
-      );
+  factory TravelModel.fromJson(Map<String, dynamic> json) {
+    // 1. 종료 날짜를 먼저 파싱합니다.
+    final endDate = DateTime.parse(json['end_date'] as String);
 
+    // 2. 오늘 날짜 (시간 제외)
+    final today =
+        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+
+    return TravelModel(
+      travel_id: json['travel_id'] as int,
+      title: json['title'] as String? ?? '제목 없음',
+      // 혹시 destination도 null로 올 때를 대비해 안전하게 처리
+      destination: json['destination'] as String? ?? '',
+      start_date: DateTime.parse(json['start_date'] as String),
+      end_date: endDate,
+
+      // 3. 서버에서 status를 주면 그걸 쓰고, 안 주면 날짜를 비교해서 자동으로 계산합니다!
+      status: json['status'] != null
+          ? (json['status'] == 'upcoming'
+              ? TripStatus.upcoming
+              : TripStatus.past)
+          : (endDate.isBefore(today) ? TripStatus.past : TripStatus.upcoming),
+    );
+  }
   Map<String, dynamic> toCreateJson() => {
         'title': title,
         'destination': destination,

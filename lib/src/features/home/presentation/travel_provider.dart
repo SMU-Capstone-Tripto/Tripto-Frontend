@@ -36,7 +36,7 @@ class TravelListNotifier extends StateNotifier<AsyncValue<List<TravelModel>>> {
   Future<void> removeTravel(String travelId) async {
     try {
       await _repository.deleteTravel(travelId);
-      // 서버에서 지워졌다면 UI 리스트에서도 즉시 제거 (자연스러운 UX)
+      // 서버에서 지워졌다면 UI 리스트에서도 즉시 제거
       if (state is AsyncData) {
         final currentList = state.value!;
         state = AsyncData(

@@ -18,6 +18,20 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
   // 상단 뷰 모드
   bool _isMapView = false;
 
+  // ✅ 화면이 처음 열릴 때 한 번만 실행되는 initState 추가
+  @override
+  void initState() {
+    super.initState();
+
+    // Flutter의 첫 화면 렌더링이 끝난 직후에 API를 안전하게 호출하도록 예약합니다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // widget.schedule에서 travel_id를 가져와 String으로 변환 후 넘겨줍니다.
+      ref
+          .read(scheduleProvider.notifier)
+          .fetchSchedules(widget.schedule.travel_id.toString());
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedDay = ref.watch(selectedDayProvider);

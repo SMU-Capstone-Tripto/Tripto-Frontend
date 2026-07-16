@@ -10,7 +10,7 @@ class ScheduleRepository {
   /// 특정 여행의 일별 세부 일정 조회
   Future<List<ScheduleModel>> getSchedules(String travelId) async {
     try {
-      final res = await _dio.get('/travels/$travelId/schedules');
+      final res = await _dio.get('/schedules/travel/$travelId/');
       final list = res.data as List;
       return list.map((e) => ScheduleModel.fromJson(e)).toList();
     } on DioException catch (e) {
