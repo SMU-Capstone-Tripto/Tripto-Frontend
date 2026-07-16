@@ -52,9 +52,7 @@ class _PasswordChangeScreenState extends ConsumerState<PasswordChangeScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('발송 실패: $e')),
-        );
+        debugPrint('인증번호 불일치 혹은 서버 에러: $e');
       }
     } finally {
       setState(() => _isCodeSending = false);
