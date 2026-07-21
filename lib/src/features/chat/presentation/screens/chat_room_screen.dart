@@ -274,25 +274,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           _userNamesMap[senderId] = socketNick;
         }
 
-        bool isAiCard = content.startsWith('{"tripto_card_type"');
-        if (isAiCard) {
-          final now = DateTime.now();
-          final String timeStr = '${now.hour >= 12 ? "오후" : "오전"} ${(now.hour % 12 == 0 ? 12 : now.hour % 12)}:${now.minute.toString().padLeft(2, '0')}';
-          
-          if (mounted) {
-            setState(() {
-              _messages.add(<String, dynamic>{
-                'message_id': msgId,
-                'sender_id': -1, 
-                'isMe': false,
-                'text': content, 
-                'time': timeStr,
-              });
-            });
-            _scrollToBottom();
-            _sendReadAcknowledge(msgId);
-          }
-          return; 
+        if (msgId > 0 && _messages.any((m) => m['message_id'] == msgId)) {
+          return;
         }
 
         if (senderId == _myUserId) {
@@ -308,31 +291,42 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           }
         }
 
+        bool isAiCard = content.startsWith('{"tripto_card_type"');
+        int mappedSenderId = isAiCard ? -1 : senderId;
+
+        if (mappedSenderId == -1 && _messages.any((m) => m['sender_id'] == -1 && m['text'] == content)) {
+          return;
+        }
+
         final now = DateTime.now();
         final String timeStr = '${now.hour >= 12 ? "오후" : "오전"} ${(now.hour % 12 == 0 ? 12 : now.hour % 12)}:${now.minute.toString().padLeft(2, '0')}';
 
         if (mounted) {
           setState(() {
             _messages.add(<String, dynamic>{
-              'message_id': msgId,
-              'sender_id': senderId,
-              'isMe': (senderId == _myUserId), 
+              'message_id': msgId > 0 ? msgId : null,
+              'sender_id': mappedSenderId,
+              'isMe': (mappedSenderId == _myUserId), 
               'text': content,
               'time': timeStr,
             });
           });
           _scrollToBottom();
-          _sendReadAcknowledge(msgId);
+          if (senderId != _myUserId && msgId > 0) {
+            _sendReadAcknowledge(msgId);
+          }
         }
       } 
       else if (type == 'read_update') {
         final int readingUserId = int.tryParse(payload['user_id']?.toString() ?? '0') ?? 0;
         final int lastReadId = int.tryParse(payload['last_read_message_id']?.toString() ?? '0') ?? 0;
         
-        setState(() {
-          _userLastReadMap[readingUserId] = lastReadId;
-          if (readingUserId > 0) _allRoomMembers.add(readingUserId);
-        });
+        if (mounted && readingUserId > 0 && lastReadId > 0) {
+          setState(() {
+            _userLastReadMap[readingUserId] = lastReadId;
+            _allRoomMembers.add(readingUserId);
+          });
+        }
       }
     } catch (e) {
       debugPrint('⚠️ 실시간 소켓 JSON 파싱 실패: $e');
@@ -359,7 +353,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         'message_id': tempMsgId,
         'sender_id': -1, 
         'isMe': false,
-        'text': "🔍 일정을 구상하고 있습니다...", 
+        'text': "🔍 답변을 생성하고 있습니다...", 
         'time': '',
       });
     });
@@ -379,6 +373,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
       final response = await client.send(request);
       String accumulatedText = "";
+      Map<String, dynamic>? finalOptimizedData;
 
       if (response.statusCode == 200) {
         final streamLines = response.stream
@@ -391,94 +386,91 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             if (dataContent == '[DONE]') break;
 
             try {
-              final payload = jsonDecode(dataContent);
-              final String type = payload['type'] ?? '';
+              if (dataContent.startsWith('{') && dataContent.endsWith('}')) {
+                final payload = jsonDecode(dataContent);
+                final String type = payload['type'] ?? '';
 
-              if (type == 'status') {
-                setState(() {
-                  _currentAiStatus = payload['message'];
-                  final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-                  if (idx != -1 && accumulatedText.isEmpty) {
-                    _messages[idx]['text'] = "🔍 ${payload['message']}...";
-                  }
-                });
-              } 
-              else if (type == 'result') {
-                final String step = payload['step'] ?? '';
-                accumulatedText = payload['content'] ?? '';
-
-                if (step == 'vote_confirm') {
-                  setState(() => _showVoteConfirmButtons = true); 
+                if (type == 'status') {
+                  setState(() => _currentAiStatus = payload['message']);
                 } 
-                else if (step == 'vote_denied') {
-                  setState(() => _showVoteConfirmButtons = false);
-                  accumulatedText = "🚨 방장이 아니므로 투표를 개설할 수 없습니다."; 
-                }
+                else if (type == 'result') {
+                  final String step = payload['step'] ?? '';
+                  accumulatedText = payload['content'] ?? '';
 
+                  if (step == 'vote_confirm') {
+                    setState(() => _showVoteConfirmButtons = true); 
+                  } 
+                  else if (step == 'optimized' || payload['itinerary'] != null) {
+                    finalOptimizedData = payload;
+                  }
+
+                  setState(() {
+                    final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
+                    if (idx != -1) _messages[idx]['text'] = accumulatedText;
+                  });
+                  _scrollToBottom();
+                }
+              } else {
+                accumulatedText = dataContent;
                 setState(() {
                   final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-                  if (idx != -1) {
-                    _messages[idx]['text'] = accumulatedText + " ...";
-                  }
-                });
-                _scrollToBottom();
-              }
-              else if (type == 'vote_created') {
-                setState(() => _showVoteConfirmButtons = false);
-                accumulatedText = payload['content'] ?? '🎉 투표방이 개설되었습니다.';
-                setState(() {
-                  final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-                  if (idx != -1) {
-                    _messages[idx]['text'] = accumulatedText;
-                  }
-                });
-                _scrollToBottom();
-              }
-              else if (type == 'error') {
-                accumulatedText = "🚨 AI 오류 발생: ${payload['message']}";
-                setState(() {
-                  final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-                  if (idx != -1) {
-                    _messages[idx]['text'] = accumulatedText;
-                  }
+                  if (idx != -1) _messages[idx]['text'] = accumulatedText;
                 });
               }
-            } catch (_) {}
+            } catch (_) {
+              accumulatedText = dataContent;
+              setState(() {
+                final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
+                if (idx != -1) _messages[idx]['text'] = accumulatedText;
+              });
+            }
           }
         }
 
-        // ── 🎯 [중요 버그 완치 부위]: 웹소켓 연결이 활성화되어 있을 때는 스트림이 끝난 후 
-        // 화면 리스트에서 임시 로딩 메시지만 말끔하게 삭제(`removeWhere`)해 줍니다.
-        // 정식 카드는 웹소켓(`new_message`)을 통해 실시간으로 1번만 안전 배출됩니다! 중복 차단 완료.
         bool isSocketConnected = (_webSocket != null && _webSocket!.readyState == WebSocket.open);
         if (isSocketConnected) {
           setState(() {
             _messages.removeWhere((m) => m['message_id'] == tempMsgId);
           });
         } else {
-          // 예외 상황(웹소켓 끊김)에서만 수동 복구용 백업 렌더링 가동
           setState(() {
             final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
             if (idx != -1) {
               _messages[idx]['message_id'] = DateTime.now().millisecondsSinceEpoch; 
-              _messages[idx]['text'] = accumulatedText;
+              if (finalOptimizedData != null) {
+                _messages[idx]['text'] = jsonEncode({
+                  "tripto_card_type": "optimized",
+                  "plan_title": finalOptimizedData!['plan_title'] ?? widget.title,
+                  "itinerary": finalOptimizedData!['itinerary'] ?? [],
+                  "estimated_cost": finalOptimizedData!['estimated_cost'] ?? {},
+                  "content": accumulatedText,
+                });
+              } else {
+                _messages[idx]['text'] = accumulatedText;
+              }
             }
           });
         }
       }
     } catch (e) {
       debugPrint('AI 에이전트 SSE 장애: $e');
-      setState(() {
-        final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-        if (idx != -1) {
-          _messages[idx]['text'] = "🚨 네트워크 연결 장애로 AI 답변 수신에 실패했습니다.";
-        }
-      });
     } finally {
       setState(() {
         _isAiStreaming = false;
         _currentAiStatus = null;
       });
+    }
+  }
+
+  /// 🎯 [@트립토 퀵 소환 기능]: 입력창 맨 앞에 @트립토 태그 자동 삽입
+  void _insertAiTag() {
+    const tag = '@트립토 ';
+    final currentText = _msgController.text;
+    if (!currentText.startsWith('@트립토') && !currentText.startsWith('@tripto')) {
+      _msgController.text = '$tag$currentText';
+      _msgController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _msgController.text.length),
+      );
     }
   }
 
@@ -526,13 +518,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   int _calculateUnreadCount(Map<String, dynamic> msg) {
     final int? msgId = msg['message_id'];
     final int senderId = msg['sender_id'] ?? 0;
-    if (msgId == null) return 0;
+    if (msgId == null || msgId <= 0) return 0;
 
     int unreadPeople = 0;
     for (var memberId in _allRoomMembers) {
-      if (memberId == senderId) continue; 
-      if (memberId == _myUserId) continue; 
-      if (memberId == -1) continue; 
+      if (memberId == senderId || memberId == _myUserId || memberId == -1) continue; 
 
       final int lastReadId = _userLastReadMap[memberId] ?? 0;
       if (lastReadId < msgId) {
@@ -604,7 +594,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       ),
       body: Column(
         children: [
-          // ── 🎯 [삭제 완료]: 요청하신 상단 보라색 세션 고정 알림바 완벽 청소 삭제 ──
           Expanded(
             child: _isHistoryLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF524582)))
@@ -636,7 +625,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF524582), 
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 10), // 💡 그만 버튼이 빠진 자리를 넓혀서 여유롭게 구성
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 10), 
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                         ),
                         icon: const Icon(Icons.check_circle_outline, color: Colors.white, size: 16),
@@ -646,7 +635,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                           _fireAiAgentStream("네"); 
                         },
                       ),
-                      // ── 🎯 [삭제 완료]: 요청하신 '아니오, 취소(그만)' 관련 소스코드 및 버튼 UI 원천 삭제 ──
                     ],
                   ),
                 ],
@@ -674,7 +662,29 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         child: Row(
           children: [
             Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, size: 22, color: Color(0xFF64748B))),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
+            // 🤖 [@트립토 퀵 소환 버튼] (반짝이 아이콘 제거)
+            GestureDetector(
+              onTap: _insertAiTag,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F3FF),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF524582).withOpacity(0.3)),
+                ),
+                child: const Text(
+                  '@트립토',
+                  style: TextStyle(
+                    color: Color(0xFF524582),
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Pretendard',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Container(
                 height: 40, padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -682,13 +692,25 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 child: TextField(
                   controller: _msgController,
                   style: const TextStyle(color: Colors.black, fontSize: 14, fontFamily: 'Pretendard'),
-                  decoration: const InputDecoration(hintText: '메세지를 입력하세요... (AI 소환은 @tripto / @트립토)', border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 11)),
+                  decoration: const InputDecoration(
+                    hintText: '메세지를 입력하세요...',
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 11),
+                  ),
                   onSubmitted: (_) => _sendMessage(),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
-            GestureDetector(onTap: _sendMessage, child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Color(0xFF524582), shape: BoxShape.circle), child: const Icon(Icons.arrow_upward_rounded, size: 20, color: Colors.white))),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _sendMessage,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(color: Color(0xFF524582), shape: BoxShape.circle),
+                child: const Icon(Icons.arrow_upward_rounded, size: 20, color: Colors.white),
+              ),
+            ),
           ],
         ),
       ),
@@ -710,11 +732,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     Map<String, dynamic>? cardData;
     String displayAiText = rawText;
 
-    if (rawText.startsWith('{"tripto_card_type"')) {
+    if (rawText.startsWith('{"tripto_card_type"') || rawText.startsWith('{"plan_title"')) {
       try {
         final parsed = jsonDecode(rawText);
-        final String cardType = parsed['tripto_card_type'] ?? '';
-        if (cardType == 'optimized') {
+        final String cardType = parsed['tripto_card_type'] ?? parsed['step'] ?? '';
+        if (cardType == 'optimized' || parsed['itinerary'] != null) {
           cardData = parsed;
           isOptimizedCard = true;
         } else if (cardType == 'text') {
