@@ -37,15 +37,32 @@ class ProfileRepository {
   // ── 3. S3 업로드용 Presigned URL 요청 ──
   Future<Map<String, String>?> getPresignedUrl(String fileName) async {
     try {
-      // API 주소는 실제 백엔드 명세에 맞춰 수정해 주세요 (예: /images/presigned)
-      final res =
-          await _dio.post('/images/presigned', data: {'file_name': fileName});
+      final res = await _dio.post('/uploads/presigned-url', data: {
+        'content_type': 'image/jpeg',
+        'category': 'profile',
+      });
+
+      // 💡 디버깅용 로그 추가 (서버 응답 확인)
+      print('서버 응답 데이터: ${res.data}');
+
+      final data = res.data;
+      if (data == null) return null;
+
+      // 💡 안전하게 형변환 (Null-safe 처리)
+      final uploadUrl = data['upload_url']?.toString();
+      final imageUrl = data['file_url']?.toString();
+
+      if (uploadUrl == null || imageUrl == null) {
+        print('🚨 응답에 upload_url 또는 file_url이 없습니다.');
+        return null;
+      }
+
       return {
-        'uploadUrl': res.data['upload_url'] as String, // S3에 직접 쏠 PUT 주소
-        'imageUrl': res.data['image_url'] as String, // DB에 저장할 최종 이미지 주소
+        'upload_url': uploadUrl,
+        'image_url': imageUrl,
       };
     } on DioException catch (e) {
-      print('Presigned URL 발급 실패: ${e.message}');
+      print('Presigned URL 발급 실패: ${e.response?.data ?? e.message}');
       return null;
     }
   }

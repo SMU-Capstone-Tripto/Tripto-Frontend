@@ -35,19 +35,19 @@ class ProfileImageNotifier extends StateNotifier<AsyncValue<void>> {
 
       // 3. 발급받은 주소로 S3에 직접 업로드
       final isUploaded = await ImageUploadService.uploadToS3(
-        presignedUrl: urls['uploadUrl']!,
+        presignedUrl: urls['upload_url']!,
         imageFile: file,
       );
       if (!isUploaded) throw Exception('S3 이미지 업로드에 실패했습니다.');
 
       // 4. 백엔드 DB에 새로운 이미지 URL 저장 요청
-      await _repository.updateMe(profile_image_url: urls['imageUrl']);
+      await _repository.updateMe(profile_image_url: urls['image_url']);
 
       // 5. 프로필 화면 데이터 강제 새로고침 (변경된 이미지 즉시 반영)
       _ref.invalidate(profileProvider);
       state = const AsyncData(null);
     } catch (e, st) {
-      // 에러 발생 시 상태를 Error로 변경하여 UI에 전달
+      // print('에러: $e');
       state = AsyncError(e, st);
     }
   }

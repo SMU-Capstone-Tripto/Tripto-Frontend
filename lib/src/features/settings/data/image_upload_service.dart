@@ -52,6 +52,11 @@ class ImageUploadService {
         headers: {'Content-Type': 'image/jpeg'},
         body: bytes,
       );
+
+      // 💡 S3가 반환한 응답 상태 코드와 바디 출력
+      // debugPrint('S3 응답 코드: ${response.statusCode}');
+      // debugPrint('S3 응답 메시지: ${response.body}');
+
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('S3 업로드 실패: $e');
