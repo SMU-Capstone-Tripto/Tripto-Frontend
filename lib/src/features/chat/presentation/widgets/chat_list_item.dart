@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tripto/src/core/auth_storage.dart';
 import '../../../chat/domain/chat_model.dart';
 
 class ChatListItem extends StatelessWidget {
@@ -142,12 +143,29 @@ class _ChatCompositeAvatar extends StatelessWidget {
       );
     }
 
-    final int count = profiles.length;
+    String? formatImgUrl(String? url) {
+      if (url == null || url.trim().isEmpty) return null;
+      final trimmed = url.trim();
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        return trimmed;
+      }
+      String cleanBase = AuthStorage.baseUrl.replaceAll('\n', '').replaceAll('\r', '').trim();
+      if (cleanBase.endsWith('/api/v1')) {
+        cleanBase = cleanBase.substring(0, cleanBase.length - 7);
+      } else if (cleanBase.endsWith('/api')) {
+        cleanBase = cleanBase.substring(0, cleanBase.length - 4);
+      }
+      if (cleanBase.endsWith('/')) {
+        cleanBase = cleanBase.substring(0, cleanBase.length - 1);
+      }
+      return trimmed.startsWith('/') ? '$cleanBase$trimmed' : '$cleanBase/$trimmed';
+    }
 
     Widget singleMiniAvatar(Map<String, String?> profile, double size, {Color? bg}) {
-      final String nick = profile['nickname'] ?? '나';
-      final String? imgUrl = profile['profile_image'];
-      final String initial = nick.isNotEmpty ? nick.substring(0, 1) : '나';
+      final String nick = (profile['nickname'] ?? '유저').trim();
+      final String? rawImg = profile['profile_image'];
+      final String? formattedUrl = formatImgUrl(rawImg);
+      final String initial = nick.isNotEmpty ? nick.substring(0, 1) : '유';
 
       return Container(
         width: size,
@@ -158,9 +176,9 @@ class _ChatCompositeAvatar extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         alignment: Alignment.center,
-        child: (imgUrl != null && imgUrl.isNotEmpty)
+        child: (formattedUrl != null && formattedUrl.isNotEmpty)
             ? Image.network(
-                imgUrl,
+                formattedUrl,
                 width: size,
                 height: size,
                 fit: BoxFit.cover,
@@ -184,9 +202,11 @@ class _ChatCompositeAvatar extends StatelessWidget {
       );
     }
 
-    if (count == 1) {
+    if (profiles.length == 1) {
       return singleMiniAvatar(profiles[0], 46, bg: const Color(0xFF6241D9));
     }
+
+    final int count = profiles.length;
 
     return SizedBox(
       width: 46,

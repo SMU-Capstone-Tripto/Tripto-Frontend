@@ -6,9 +6,9 @@ import 'package:tripto/src/features/chat/domain/chat_model.dart';
 import 'package:tripto/src/features/chat/presentation/chat_provider.dart';
 import 'package:tripto/src/features/chat/presentation/screens/chat_add_screen.dart';
 import 'package:tripto/src/features/chat/presentation/screens/chat_room_screen.dart';
-// 🎯 [핵심 추가]: profileProvider import
 import 'package:tripto/src/features/settings/presentation/profile_provider.dart';
 import 'package:http/http.dart' as http; 
+
 class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
 
@@ -99,11 +99,13 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
     );
   }
 
-  /// 🎯 [통합 아바타: 내 프로필 보완 로직 적용]
+  /// 🎯 [통합 아바타: 2인 방 2개 아바타 스택 정상 표시]
   Widget _buildListCompositeAvatar(ChatModel room) {
     final myProfile = ref.watch(profileProvider).value;
     final String? myProfileImg = myProfile?.profileImage;
-    final String myNickname = myProfile?.nickname ?? '신지녕임니당';
+    final String myNickname = (myProfile?.nickname ?? '').trim();
+    final String myUserIdStr = (myProfile as dynamic)?.userId?.toString() ?? 
+                               (myProfile as dynamic)?.id?.toString() ?? '';
 
     final profiles = room.humanProfiles;
 
@@ -120,23 +122,59 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
       );
     }
 
-    final int count = profiles.length;
+    String? formatImgUrl(String? url) {
+      if (url == null || url.trim().isEmpty) return null;
+      String trimmed = url.trim();
+
+      String cleanBase = AuthStorage.baseUrl.replaceAll('\n', '').replaceAll('\r', '').trim();
+      
+      while (cleanBase.endsWith('/')) {
+        cleanBase = cleanBase.substring(0, cleanBase.length - 1);
+      }
+      if (cleanBase.endsWith('/api/v1')) {
+        cleanBase = cleanBase.substring(0, cleanBase.length - 7);
+      } else if (cleanBase.endsWith('/api')) {
+        cleanBase = cleanBase.substring(0, cleanBase.length - 4);
+      }
+      while (cleanBase.endsWith('/')) {
+        cleanBase = cleanBase.substring(0, cleanBase.length - 1);
+      }
+
+      if (trimmed.contains('localhost:') || trimmed.contains('127.0.0.1:')) {
+        final uri = Uri.tryParse(trimmed);
+        if (uri != null && uri.path.isNotEmpty) {
+          trimmed = uri.path;
+        }
+      }
+
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        return trimmed;
+      }
+
+      return trimmed.startsWith('/') ? '$cleanBase$trimmed' : '$cleanBase/$trimmed';
+    }
 
     Widget singleMiniAvatar(Map<String, dynamic> profile, double size, {Color? bg}) {
-      final String nick = (profile['nickname'] ?? profile['name'] ?? profile['username'] ?? '나').toString().trim();
+      final String nick = (profile['nickname'] ?? profile['name'] ?? profile['username'] ?? '유저').toString().trim();
+      final String pId = profile['id']?.toString() ?? '';
       
       String? rawImg = profile['profile_image'] ?? 
                        profile['profile_img'] ?? 
+                       profile['profile_image_url'] ?? 
                        profile['image'] ?? 
                        profile['user_image'] ?? 
                        profile['avatar'];
 
-      if ((rawImg == null || rawImg.toString().trim().isEmpty) && (nick == myNickname || nick == '나')) {
+      bool isMe = (myUserIdStr.isNotEmpty && pId == myUserIdStr) || 
+                  (myNickname.isNotEmpty && nick == myNickname) || 
+                  nick == '나';
+
+      if ((rawImg == null || rawImg.toString().trim().isEmpty) && isMe) {
         rawImg = myProfileImg;
       }
 
-      final String? imgUrl = (rawImg != null && rawImg.toString().trim().isNotEmpty) ? rawImg.toString().trim() : null;
-      final String initial = nick.isNotEmpty ? nick.substring(0, 1) : '나';
+      final String? formattedUrl = formatImgUrl(rawImg);
+      final String initial = nick.isNotEmpty ? nick.substring(0, 1) : '유';
 
       return Container(
         width: size,
@@ -147,9 +185,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
         ),
         clipBehavior: Clip.antiAlias,
         alignment: Alignment.center,
-        child: (imgUrl != null && imgUrl.isNotEmpty)
+        child: (formattedUrl != null && formattedUrl.isNotEmpty)
             ? Image.network(
-                imgUrl,
+                formattedUrl,
                 width: size,
                 height: size,
                 fit: BoxFit.cover,
@@ -165,10 +203,14 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
       );
     }
 
+    final int count = profiles.length;
+
+    // 1명(나 혼자 방)일 때만 단독 48px
     if (count == 1) {
       return singleMiniAvatar(profiles[0], 48, bg: const Color(0xFF6241D9));
     }
 
+    // 2명 이상인 경우 다중 아바타 스택 (2명 방은 2개의 미니 아바타 표시)
     return SizedBox(
       width: 48,
       height: 48,

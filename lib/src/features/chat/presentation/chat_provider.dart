@@ -56,10 +56,47 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
                     final List<dynamic> messages = msgData['messages'] ?? [];
                     final Map<String, dynamic> readStatuses = Map<String, dynamic>.from(msgData['read_statuses'] ?? {});
                     final Map<String, dynamic> userNames = Map<String, dynamic>.from(msgData['user_names'] ?? {});
+                    final Map<String, dynamic> userImages = Map<String, dynamic>.from(msgData['user_images'] ?? msgData['profile_images'] ?? {});
+
+                    // 🎯 [핵심 보완]: 메시지 배열 내 모든 Key(sender_profile_image, avatar, profile_img 등) 대응 수집
+                    for (var m in messages) {
+                      if (m is Map) {
+                        final String? senderId = m['sender_id']?.toString() ?? m['user_id']?.toString();
+                        final String? senderImg = m['sender_profile_image']?.toString() ?? 
+                                                 m['sender_profile_img']?.toString() ?? 
+                                                 m['profile_image']?.toString() ?? 
+                                                 m['profile_img']?.toString() ?? 
+                                                 m['profile_image_url']?.toString() ??
+                                                 m['avatar']?.toString();
+                        final String? senderNick = m['sender_nickname']?.toString() ?? 
+                                                  m['nickname']?.toString() ?? 
+                                                  m['name']?.toString();
+
+                        if (senderId != null && senderId != '0' && senderId != '-1') {
+                          if (senderImg != null && senderImg.trim().isNotEmpty) {
+                            userImages[senderId] = senderImg.trim();
+                          }
+                          if (senderNick != null && senderNick.trim().isNotEmpty) {
+                            userNames[senderId] = senderNick.trim();
+                          }
+                        }
+                      }
+                    }
 
                     roomJson['user_names'] = userNames;
+                    roomJson['user_images'] = userImages;
                     if (msgData['member_ids'] != null) {
                       roomJson['member_ids'] = msgData['member_ids'];
+                    }
+
+                    for (var key in [
+                      'profile_images', 'user_profile_images', 'images', 
+                      'avatars', 'user_profiles', 'profiles', 'members',
+                      'opponent', 'partner', 'target_user'
+                    ]) {
+                      if (msgData[key] != null) {
+                        roomJson[key] = msgData[key];
+                      }
                     }
 
                     if (messages.isNotEmpty) {
