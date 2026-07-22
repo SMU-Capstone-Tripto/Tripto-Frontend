@@ -7,7 +7,14 @@ import '../../../schedule/domain/travel_model.dart';
 
 class ScheduleDetailScreen extends ConsumerStatefulWidget {
   final TravelModel schedule;
-  const ScheduleDetailScreen({super.key, required this.schedule});
+  // 💡 1. 친구 피드에서 넘어온 것인지 확인하는 플래그 추가 (기본값은 false)
+  final bool isFriendFeed;
+
+  const ScheduleDetailScreen({
+    super.key,
+    required this.schedule,
+    this.isFriendFeed = false, // 기본적으로 내 일정으로 간주
+  });
 
   @override
   ConsumerState<ScheduleDetailScreen> createState() =>
@@ -15,20 +22,23 @@ class ScheduleDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
-  // 상단 뷰 모드
   bool _isMapView = false;
 
-  // ✅ 화면이 처음 열릴 때 한 번만 실행되는 initState 추가
   @override
   void initState() {
     super.initState();
 
-    // Flutter의 첫 화면 렌더링이 끝난 직후에 API를 안전하게 호출하도록 예약합니다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // widget.schedule에서 travel_id를 가져와 String으로 변환 후 넘겨줍니다.
-      ref
-          .read(scheduleProvider.notifier)
-          .fetchSchedules(widget.schedule.travel_id.toString());
+      final travelId = widget.schedule.travel_id.toString();
+
+      // 💡 2. 내 일정인지 친구 일정인지에 따라 다른 API 로직 호출
+      if (widget.isFriendFeed) {
+        // 백엔드 명세의 GET /api/v1/feed/{travel_id} 를 호출하는 함수 실행
+        ref.read(scheduleProvider.notifier).fetchFriendSchedules(travelId);
+      } else {
+        // 기존 내 일정 호출 로직
+        ref.read(scheduleProvider.notifier).fetchSchedules(travelId);
+      }
     });
   }
 

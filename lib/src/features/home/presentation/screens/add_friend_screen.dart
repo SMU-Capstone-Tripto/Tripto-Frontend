@@ -42,7 +42,6 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen> {
     _focusNode.unfocus();
 
     try {
-      // 실제 API 호출 (friendSearchProvider 사용)
       final userModel = await ref.read(friendSearchProvider(query).future);
 
       setState(() {

@@ -100,9 +100,24 @@ class HomeScreen extends ConsumerWidget {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: FriendListItem(
                           friend: friends[i],
-                          onDelete: () => ref
-                              .read(friendListProvider.notifier)
-                              .removeFriend(friends[i].friendId),
+                          // 💡 Future<bool>을 반환하도록 async 코드로 변경 및 friendshipId 사용!
+                          onDelete: () async {
+                            try {
+                              // 서버와 통신하여 삭제를 요청합니다.
+                              await ref
+                                  .read(friendListProvider.notifier)
+                                  .removeFriend(friends[i]
+                                      .friendshipId); // friendId가 아니라 friendshipId여야 합니다!
+                              return true; // 삭제 성공 -> 화면에서 스르륵 사라짐
+                            } catch (e) {
+                              // 삭제 실패 시 에러 문구를 띄우고
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('삭제 실패: $e')));
+                              }
+                              return false; // 삭제 실패 -> 스와이프된 카드가 제자리로 돌아옴
+                            }
+                          },
                         ),
                       ),
                     ),

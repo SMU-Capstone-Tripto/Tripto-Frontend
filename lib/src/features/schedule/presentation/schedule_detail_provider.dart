@@ -44,6 +44,17 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
     }
   }
 
+  // ── 💡 새로 추가: 친구 피드용 스케줄 불러오기 ──
+  Future<void> fetchFriendSchedules(String travelId) async {
+    try {
+      // repository에 새로 만들 getFriendSchedules를 호출합니다.
+      final items = await repository.getFriendSchedules(travelId);
+      state = items;
+    } catch (e) {
+      print('친구 스케줄 불러오기 실패: $e');
+    }
+  }
+
   // 메모 업데이트 (기존 유지)
   void updateMemo(String id, String memo) {
     state = state

@@ -61,7 +61,7 @@ class ProfileRepository {
         'imageUrl': imageUrl,
       };
     } on DioException catch (e) {
-      print('Presigned URL 발급 실패: ${e.message}');
+      print('Presigned URL 발급 실패: ${e.response?.data ?? e.message}');
       return null;
     }
   }

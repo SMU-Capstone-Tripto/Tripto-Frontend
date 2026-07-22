@@ -37,7 +37,7 @@ class ProfileImageNotifier extends StateNotifier<AsyncValue<void>> {
 
       // 3. S3 직접 업로드 (PUT)
       final isUploaded = await ImageUploadService.uploadToS3(
-        presignedUrl: urls['uploadUrl']!,
+        presignedUrl: urls['upload_url']!,
         imageFile: file,
       );
       if (!isUploaded) throw Exception('S3 직접 업로드(PUT) 실패');
