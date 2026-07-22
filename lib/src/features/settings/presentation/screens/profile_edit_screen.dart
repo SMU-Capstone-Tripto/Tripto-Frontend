@@ -1,9 +1,7 @@
-// lib/src/features/profile/presentation/screens/profile_edit_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:tripto/src/constants/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:tripto/src/constants/app_theme.dart';
 import 'password_change_screen.dart';
 import '../profile_provider.dart';
 import '../../data/profile_repository.dart';
@@ -17,22 +15,16 @@ class ProfileEditScreen extends ConsumerStatefulWidget {
 
 class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   final _nicknameController = TextEditingController();
-  final _birthController = TextEditingController();
   final _emailController = TextEditingController();
-
   String _uniqueId = '';
 
   @override
   void initState() {
     super.initState();
-
-    // 이전 화면(ProfileScreen)에서 이미 로드해둔 프로필 데이터 가져오기
     final profile = ref.read(profileProvider).value;
-
     if (profile != null) {
-      // 텍스트 필드와 텍스트 위젯에 서버 데이터 꽂아넣기
       _nicknameController.text = profile.nickname;
-      _uniqueId = profile.unique_id;
+      _uniqueId = profile.uniqueId;
       _emailController.text = profile.email;
     }
   }
@@ -40,18 +32,32 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   @override
   void dispose() {
     _nicknameController.dispose();
-    _birthController.dispose();
     _emailController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // 🎯 1. 프로필 이미지 업로드 에러 감지 시 스낵바 출력
+    ref.listen<AsyncValue<void>>(profileImageControllerProvider, (previous, next) {
+      if (next is AsyncError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('프로필 이미지 변경 실패: ${next.error}')),
+        );
+      }
+    });
+
+    // 🎯 2. 실시간 최신 프로필 상태 구독
+    final profileAsync = ref.watch(profileProvider);
+    final currentImage = profileAsync.value?.profileImage;
+
+    final imageUploadState = ref.watch(profileImageControllerProvider);
+    final isUploading = imageUploadState.isLoading;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          // 앱바
           Container(
             color: Colors.white,
             padding: EdgeInsets.fromLTRB(
@@ -76,39 +82,66 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  // 아바타
+                  // 🎯 3. 아바타 클릭 시 사진 선택/업로드 실행 연동
                   Container(
                     color: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Center(
-                      child: Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 40,
-                            backgroundColor: const Color(0xFFDDDDDD),
-                            child: const Icon(Icons.person,
-                                size: 40, color: Colors.white),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              width: 26,
-                              height: 26,
-                              decoration: const BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.camera_alt_outlined,
-                                  size: 13, color: Colors.white),
+                      child: GestureDetector(
+                        onTap: isUploading
+                            ? null
+                            : () {
+                                ref
+                                    .read(profileImageControllerProvider.notifier)
+                                    .updateProfileImage();
+                              },
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 40,
+                              backgroundColor: const Color(0xFFDDDDDD),
+                              backgroundImage: (currentImage != null && currentImage.isNotEmpty)
+                                  ? NetworkImage(currentImage)
+                                  : null,
+                              child: (currentImage == null || currentImage.isEmpty)
+                                  ? const Icon(Icons.person, size: 40, color: Colors.white)
+                                  : null,
                             ),
-                          ),
-                        ],
+                            if (isUploading)
+                              Positioned.fill(
+                                child: CircleAvatar(
+                                  radius: 40,
+                                  backgroundColor: Colors.black.withOpacity(0.4),
+                                  child: const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                width: 26,
+                                height: 26,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.camera_alt_outlined,
+                                    size: 13, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
 
-                  // 폼
                   Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
@@ -119,7 +152,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                             hint: '닉네임을 입력하세요'),
                         const SizedBox(height: 14),
 
-                        // 고유 ID (읽기 전용 + 복사)
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -171,30 +203,22 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                         const SizedBox(height: 14),
 
                         _FormField(
-                            label: '이메일',
+                            label: '이메일 (읽기 전용)',
                             controller: _emailController,
+                            readOnly: true,
                             hint: 'example@email.com',
                             keyboardType: TextInputType.emailAddress),
                         const SizedBox(height: 20),
 
-                        // 저장 버튼
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
                             onPressed: () async {
                               try {
-                                // 1. 레포지토리 가져오기
-                                final repo =
-                                    ref.read(profileRepositoryProvider);
-
-                                // 2. 서버로 닉네임 수정 요청보내기
-                                await repo.updateMe(
-                                    nickname: _nicknameController.text);
-
-                                // 3. 프로필 상태를 무효화하여 최신 데이터로 다시 불러오기 (UI 자동 갱신)
+                                final repo = ref.read(profileRepositoryProvider);
+                                await repo.updateMe(nickname: _nicknameController.text);
                                 ref.invalidate(profileProvider);
 
-                                // 4. 완료 후 이전 화면으로 돌아가기 전에 성공 알림 띄우기
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
@@ -205,7 +229,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                                   Navigator.pop(context);
                                 }
                               } catch (e) {
-                                // 에러 발생 시 사용자에게 알림
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(content: Text('프로필 수정 실패: $e')),
@@ -228,13 +251,11 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                         ),
                         const SizedBox(height: 8),
 
-                        // 비밀번호 변경
                         TextButton(
                           onPressed: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (_) =>
-                                      const PasswordChangeScreen())),
+                                  builder: (_) => const PasswordChangeScreen())),
                           child: const Text('비밀번호 변경하기',
                               style: TextStyle(
                                   fontSize: 13,
@@ -258,11 +279,14 @@ class _FormField extends StatelessWidget {
   final String label, hint;
   final TextEditingController controller;
   final TextInputType? keyboardType;
+  final bool readOnly;
+
   const _FormField(
       {required this.label,
       required this.controller,
       required this.hint,
-      this.keyboardType});
+      this.keyboardType,
+      this.readOnly = false});
 
   @override
   Widget build(BuildContext context) {
@@ -277,12 +301,13 @@ class _FormField extends StatelessWidget {
         const SizedBox(height: 6),
         TextField(
           controller: controller,
+          readOnly: readOnly,
           keyboardType: keyboardType,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(color: Color(0xFFC0BBDE)),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: readOnly ? const Color(0xFFF8FAFC) : Colors.white,
             border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide:

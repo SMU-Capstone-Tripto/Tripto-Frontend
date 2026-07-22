@@ -7,6 +7,9 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../../../core/network/auth_storage.dart';
 import '../../../auth/presentation/login_screen.dart';
 import '../../../home/presentation/home_provider.dart';
+
+// 🎯 [보정 완료]: 상대 경로 ../ -> ../../ 로 두 단계 상위 폴더 경로 수정
+import '../../domain/profile_model.dart';
 import '../screens/saved_schedule_screen.dart';
 import '../profile_provider.dart';
 import '../screens/saved_places_screen.dart';
@@ -21,7 +24,6 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 💡 백엔드에서 프로필 데이터 가져오기
     final profileAsync = ref.watch(profileProvider);
 
     return Scaffold(
@@ -35,15 +37,11 @@ class ProfileScreen extends ConsumerWidget {
         ),
         data: (profile) => CustomScrollView(
           slivers: [
-            // 💡 프로필 헤더에 profile 객체 전달
             SliverToBoxAdapter(child: _ProfileHeader(profile: profile)),
-
-            // ── 메뉴 목록 (기존 그대로) ──
             SliverPadding(
               padding: const EdgeInsets.all(20),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  // 여행 기록
                   const _SectionLabel('여행 기록'),
                   const SizedBox(height: 6),
                   _MenuCard(items: [
@@ -53,8 +51,7 @@ class ProfileScreen extends ConsumerWidget {
                       onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                                  const SavedSchedulesScreen())), // 일정 화면 연결
+                              builder: (_) => const SavedSchedulesScreen())),
                     ),
                     _MenuItem(
                       icon: Icons.favorite_outline,
@@ -68,8 +65,6 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                   ]),
                   const SizedBox(height: 16),
-
-                  // 설정
                   const _SectionLabel('설정'),
                   const SizedBox(height: 6),
                   _MenuCard(items: [
@@ -92,8 +87,6 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                   ]),
                   const SizedBox(height: 16),
-
-                  // 지원
                   const _SectionLabel('지원'),
                   const SizedBox(height: 6),
                   _MenuCard(items: [
@@ -109,8 +102,6 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                   ]),
                   const SizedBox(height: 8),
-
-                  // 로그아웃 버튼 수정
                   _LogoutButton(onTap: () async {
                     final confirm = await showDialog<bool>(
                       context: context,
@@ -128,8 +119,7 @@ class ProfileScreen extends ConsumerWidget {
                           TextButton(
                             onPressed: () => Navigator.pop(context, false),
                             child: const Text('취소',
-                                style:
-                                    TextStyle(color: AppColors.textSecondary)),
+                                style: TextStyle(color: AppColors.textSecondary)),
                           ),
                           TextButton(
                             onPressed: () => Navigator.pop(context, true),
@@ -142,23 +132,16 @@ class ProfileScreen extends ConsumerWidget {
 
                     if (confirm == true && context.mounted) {
                       try {
-                        // 1. 기기 저장소 토큰 및 세션 삭제
                         await TokenStorage.clearTokens();
                         AuthStorage.accessToken = null;
                         AuthStorage.refreshToken = null;
 
-                        // 💡 [해결책 1] Riverpod 캐시 강제 만료 (가장 중요)
-                        // 이 코드가 실행되어야 다음 로그인 시 이전 데이터가 아닌 새 유저 데이터를 서버에서 새로 읽어옵니다.
                         ref.invalidate(profileProvider);
                         ref.invalidate(friendListProvider);
-                        // ref.invalidate(savedSchedulesProvider);
 
-                        // 💡 [해결책 2] 소셜 로그인 웹뷰 쿠키 완전 삭제
-                        // 소셜 로그인 시 브라우저 세션이 남아 자동 로그인되는 현상을 방지합니다.
                         final cookieManager = WebViewCookieManager();
                         await cookieManager.clearCookies();
 
-                        // 2. 로그인 화면으로 이동
                         if (context.mounted) {
                           context.go('/login');
                         }
@@ -171,8 +154,6 @@ class ProfileScreen extends ConsumerWidget {
                       }
                     }
                   }),
-
-                  // 버전 정보
                   const _AppVersion(),
                 ]),
               ),
@@ -184,16 +165,16 @@ class ProfileScreen extends ConsumerWidget {
   }
 }
 
-// ── 상단 프로필 헤더 (ConsumerWidget으로 변경하여 Provider 직접 사용) ──
 class _ProfileHeader extends ConsumerWidget {
-  final dynamic profile;
+  final ProfileModel profile;
   const _ProfileHeader({required this.profile});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 💡 이미지 업로드 상태 구독 (로딩 스피너 표시용)
     final imageUploadState = ref.watch(profileImageControllerProvider);
     final isUploading = imageUploadState.isLoading;
+
+    final bool hasImage = profile.profileImage != null && profile.profileImage!.isNotEmpty;
 
     return Container(
       color: Colors.white,
@@ -211,24 +192,16 @@ class _ProfileHeader extends ConsumerWidget {
           const SizedBox(height: 16),
           Row(
             children: [
-              // ── 아바타 ──
               Stack(
                 children: [
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: AppColors.primaryLight,
-                    // avatarUrl이 null이므로 기본 아이콘이 보여지게 됩니다.
-                    backgroundImage: profile.avatarUrl != null &&
-                            profile.avatarUrl!.isNotEmpty
-                        ? NetworkImage(profile.avatarUrl!)
+                    backgroundImage: hasImage ? NetworkImage(profile.profileImage!) : null,
+                    child: !hasImage
+                        ? const Icon(Icons.person_outline, size: 30, color: AppColors.primary)
                         : null,
-                    child:
-                        profile.avatarUrl == null || profile.avatarUrl!.isEmpty
-                            ? const Icon(Icons.person_outline,
-                                size: 30, color: AppColors.primary)
-                            : null,
                   ),
-                  // 업로드 중 로딩 표시
                   if (isUploading)
                     Positioned.fill(
                       child: CircleAvatar(
@@ -244,12 +217,10 @@ class _ProfileHeader extends ConsumerWidget {
                         ),
                       ),
                     ),
-                  // 카메라 버튼
                   Positioned(
                     bottom: 0,
                     right: 0,
                     child: GestureDetector(
-                      // 💡 버튼 클릭 시 Provider의 업로드 로직 실행!
                       onTap: isUploading
                           ? null
                           : () {
@@ -270,7 +241,6 @@ class _ProfileHeader extends ConsumerWidget {
                 ],
               ),
               const SizedBox(width: 14),
-              // ── 이름 + 아이디 ──
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -282,14 +252,13 @@ class _ProfileHeader extends ConsumerWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Text(profile.unique_id,
+                      Text(profile.uniqueId,
                           style: const TextStyle(
                               fontSize: 12, color: AppColors.textSecondary)),
                       const SizedBox(width: 6),
                       GestureDetector(
                         onTap: () {
-                          Clipboard.setData(
-                              ClipboardData(text: profile.unique_id));
+                          Clipboard.setData(ClipboardData(text: profile.uniqueId));
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                                 content: Text('아이디가 복사되었습니다'),
@@ -311,7 +280,6 @@ class _ProfileHeader extends ConsumerWidget {
   }
 }
 
-// ── 섹션 라벨 ──
 class _SectionLabel extends StatelessWidget {
   final String text;
   const _SectionLabel(this.text);
@@ -330,7 +298,6 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-// ── 메뉴 카드 (둥근 흰 박스) ──
 class _MenuCard extends StatelessWidget {
   final List<_MenuItem> items;
   const _MenuCard({required this.items});
@@ -350,7 +317,7 @@ class _MenuCard extends StatelessWidget {
             children: [
               item,
               if (!isLast)
-                const Divider(height: 1, color: Color(0xFFF3F4F6), indent: 16),
+                const Divider(height: 1, color: Color(0xFFF3F3F6), indent: 16),
             ],
           );
         }).toList(),
@@ -359,7 +326,6 @@ class _MenuCard extends StatelessWidget {
   }
 }
 
-// ── 개별 메뉴 항목 ──
 class _MenuItem extends StatelessWidget {
   final IconData icon;
   final Color iconBg;
@@ -384,7 +350,6 @@ class _MenuItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         child: Row(
           children: [
-            // 아이콘 배경 박스
             Container(
               width: 32,
               height: 32,
@@ -395,7 +360,6 @@ class _MenuItem extends StatelessWidget {
               child: Icon(icon, size: 17, color: iconColor),
             ),
             const SizedBox(width: 12),
-            // 메뉴 텍스트
             Expanded(
               child: Text(
                 label,
@@ -415,7 +379,6 @@ class _MenuItem extends StatelessWidget {
   }
 }
 
-// ── 로그아웃 버튼 ──
 class _LogoutButton extends StatelessWidget {
   final VoidCallback onTap;
   const _LogoutButton({required this.onTap});
@@ -434,7 +397,6 @@ class _LogoutButton extends StatelessWidget {
   }
 }
 
-// ── 앱 버전 ──
 class _AppVersion extends StatelessWidget {
   const _AppVersion();
 

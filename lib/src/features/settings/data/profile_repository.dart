@@ -18,15 +18,17 @@ class ProfileRepository {
     }
   }
 
-  // ── 2. 내 정보 수정 (닉네임, 프로필 이미지 URL 등) ──
-  Future<ProfileModel> updateMe(
-      {String? nickname, String? profile_image_url, String? birth}) async {
+  // ── 2. 내 정보 수정 (백엔드 UserUpdateRequest와 키값 일치) ──
+  Future<ProfileModel> updateMe({
+    String? nickname,
+    String? profileImage,
+    List<String>? tags,
+  }) async {
     try {
       final res = await _dio.patch('/auth/me', data: {
         if (nickname != null) 'nickname': nickname,
-        if (birth != null) 'birth': birth,
-        if (profile_image_url != null)
-          'profile_image_url': profile_image_url, // 프로필 이미지 URL 수정 파라미터 추가
+        if (profileImage != null) 'profile_image': profileImage,
+        if (tags != null) 'tags': tags,
       });
       return ProfileModel.fromJson(res.data);
     } on DioException catch (e) {
@@ -34,15 +36,29 @@ class ProfileRepository {
     }
   }
 
-  // ── 3. S3 업로드용 Presigned URL 요청 ──
-  Future<Map<String, String>?> getPresignedUrl(String fileName) async {
+  // ── 3. S3 Presigned URL 요청 (백엔드 s3_service.py 및 uploads.py 명세 반영) ──
+  Future<Map<String, String>?> getPresignedUrl({
+    String contentType = 'image/jpeg',
+    String category = 'profile',
+  }) async {
     try {
-      // API 주소는 실제 백엔드 명세에 맞춰 수정해 주세요 (예: /images/presigned)
-      final res =
-          await _dio.post('/images/presigned', data: {'file_name': fileName});
+      final res = await _dio.post(
+        '/uploads/presigned-url',
+        data: {
+          'content_type': contentType,
+          'category': category,
+        },
+      );
+
+      final Map<String, dynamic> data = Map<String, dynamic>.from(res.data);
+
+      // 백엔드 s3_service.py의 반환 키: 'upload_url', 'file_url'
+      final String uploadUrl = (data['upload_url'] ?? '').toString();
+      final String imageUrl = (data['file_url'] ?? data['image_url'] ?? '').toString();
+
       return {
-        'uploadUrl': res.data['upload_url'] as String, // S3에 직접 쏠 PUT 주소
-        'imageUrl': res.data['image_url'] as String, // DB에 저장할 최종 이미지 주소
+        'uploadUrl': uploadUrl,
+        'imageUrl': imageUrl,
       };
     } on DioException catch (e) {
       print('Presigned URL 발급 실패: ${e.message}');
@@ -50,14 +66,13 @@ class ProfileRepository {
     }
   }
 
-  // ── 4. 비밀번호 변경 ──
+  // ── 4. 비밀번호 변경 (로그인 상태) ──
   Future<void> updatePassword({
     required String oldPassword,
     required String newPassword,
     required String verificationCode,
   }) async {
     try {
-      // 💡 백엔드 명세에 따라 URL('/auth/password')과 파라미터 이름을 맞춰주세요.
       await _dio.patch('/auth/password', data: {
         'old_password': oldPassword,
         'new_password': newPassword,
@@ -68,14 +83,13 @@ class ProfileRepository {
     }
   }
 
-  // ── 5. 비밀번호 변경용 인증번호 발송 요청 ──
+  // ── 5. 이메일 인증번호 발송 요청 ──
   Future<void> requestVerificationCode(String email) async {
     try {
       await _dio.post('/auth/email/send-code', data: {
         'email': email,
       });
     } on DioException catch (e) {
-      print('🚨 인증번호 발송 에러 상세: ${e.response?.data}');
       throw handleDioError(e);
     }
   }
