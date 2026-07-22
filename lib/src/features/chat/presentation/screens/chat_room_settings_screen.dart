@@ -42,6 +42,7 @@ class ChatRoomSettingsScreen extends StatefulWidget {
   final int roomId;
   final List<int> activeMemberIds; 
   final Map<int, String> userNamesMap; 
+  final Map<int, String?>? userProfileImagesMap;
   final int? ownerId; 
 
   const ChatRoomSettingsScreen({
@@ -50,6 +51,7 @@ class ChatRoomSettingsScreen extends StatefulWidget {
     required this.roomId,
     required this.activeMemberIds,
     required this.userNamesMap,
+    this.userProfileImagesMap,
     this.ownerId, 
   });
 
@@ -69,10 +71,9 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
     _fetchMyProfile();
   }
 
-  // 🎯 [트립토 -1 및 나간 유저 완전히 제거된 멤버 ID 리스트 반환]
   List<int> get _cleanActiveMemberIds {
     return widget.activeMemberIds.where((id) {
-      if (id == -1) return false; // 트립토 원천 제거
+      if (id == -1) return false;
 
       String rawNick = widget.userNamesMap[id]?.trim() ?? '';
       rawNick = rawNick.replaceAll('<', '').replaceAll('>', '').replaceAll('(', '').replaceAll(')', '').trim();
@@ -83,7 +84,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
                        rawNick.contains('알 수 없음') || 
                        RegExp(r'^유저\d+$').hasMatch(rawNick);
 
-      return !isInvalid; // 나간 유저 제외
+      return !isInvalid;
     }).toList();
   }
 
@@ -222,26 +223,38 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
     );
   }
 
-  Widget _buildCompositeAvatar(List<int> memberIds, Map<int, String> namesMap) {
-    final List<String> shortNames = memberIds.map((id) {
-      final name = namesMap[id] ?? '나';
-      return name.isNotEmpty ? name.substring(0, 1) : '나';
-    }).toList();
+  /// 🎯 [설정 화면 상단 대형 아바타: S3 프로필 사진 적용]
+  Widget _buildCompositeAvatar(List<int> memberIds, Map<int, String> namesMap, Map<int, String?>? imagesMap) {
+    final int count = memberIds.length;
 
-    final int count = shortNames.length;
+    Widget singleMiniAvatar(int id, double size, {Color? bg}) {
+      final String name = namesMap[id] ?? '나';
+      final String char = name.isNotEmpty ? name.substring(0, 1) : '나';
+      final String? imgUrl = imagesMap?[id];
 
-    Widget singleMiniAvatar(String char, double size, {Color? bg}) {
       return Container(
         width: size, height: size,
         decoration: BoxDecoration(
           color: bg ?? const Color(0xFFCBD5E1),
           borderRadius: BorderRadius.circular(size * 0.35), 
         ),
+        clipBehavior: Clip.antiAlias,
         alignment: Alignment.center,
-        child: Text(
-          char,
-          style: TextStyle(color: Colors.white, fontSize: size * 0.45, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
-        ),
+        child: (imgUrl != null && imgUrl.isNotEmpty)
+            ? Image.network(
+                imgUrl,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Text(
+                  char,
+                  style: TextStyle(color: Colors.white, fontSize: size * 0.45, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+                ),
+              )
+            : Text(
+                char,
+                style: TextStyle(color: Colors.white, fontSize: size * 0.45, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+              ),
       );
     }
 
@@ -251,32 +264,32 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
       child: Builder(
         builder: (context) {
           if (count <= 1) {
-            return singleMiniAvatar(shortNames.isNotEmpty ? shortNames[0] : '나', 100, bg: const Color(0xFF6241D9));
+            return singleMiniAvatar(memberIds.isNotEmpty ? memberIds[0] : _myUserId, 100, bg: const Color(0xFF6241D9));
           }
           else if (count == 2) {
             return Stack(
               children: [
-                Positioned(left: 4, top: 4, child: singleMiniAvatar(shortNames[0], 52, bg: const Color(0xFF818CF8))),
-                Positioned(right: 4, bottom: 4, child: singleMiniAvatar(shortNames[1], 52, bg: const Color(0xFF6366F1))),
+                Positioned(left: 4, top: 4, child: singleMiniAvatar(memberIds[0], 52, bg: const Color(0xFF818CF8))),
+                Positioned(right: 4, bottom: 4, child: singleMiniAvatar(memberIds[1], 52, bg: const Color(0xFF6366F1))),
               ],
             );
           }
           else if (count == 3) {
             return Stack(
               children: [
-                Positioned(left: 26, top: 4, child: singleMiniAvatar(shortNames[0], 48, bg: const Color(0xFF94A3B8))),
-                Positioned(left: 2, bottom: 4, child: singleMiniAvatar(shortNames[1], 48, bg: const Color(0xFF64748B))),
-                Positioned(right: 2, bottom: 4, child: singleMiniAvatar(shortNames[2], 48, bg: const Color(0xFF475569))),
+                Positioned(left: 26, top: 4, child: singleMiniAvatar(memberIds[0], 48, bg: const Color(0xFF94A3B8))),
+                Positioned(left: 2, bottom: 4, child: singleMiniAvatar(memberIds[1], 48, bg: const Color(0xFF64748B))),
+                Positioned(right: 2, bottom: 4, child: singleMiniAvatar(memberIds[2], 48, bg: const Color(0xFF475569))),
               ],
             );
           }
           else {
             return Stack(
               children: [
-                Positioned(left: 4, top: 4, child: singleMiniAvatar(shortNames[0], 44, bg: const Color(0xFF94A3B8))),
-                Positioned(right: 4, top: 4, child: singleMiniAvatar(shortNames[1], 44, bg: const Color(0xFF64748B))),
-                Positioned(left: 4, bottom: 4, child: singleMiniAvatar(shortNames[2], 44, bg: const Color(0xFF475569))),
-                Positioned(right: 4, bottom: 4, child: singleMiniAvatar(shortNames[3], 44, bg: const Color(0xFF334155))),
+                Positioned(left: 4, top: 4, child: singleMiniAvatar(memberIds[0], 44, bg: const Color(0xFF94A3B8))),
+                Positioned(right: 4, top: 4, child: singleMiniAvatar(memberIds[1], 44, bg: const Color(0xFF64748B))),
+                Positioned(left: 4, bottom: 4, child: singleMiniAvatar(memberIds[2], 44, bg: const Color(0xFF475569))),
+                Positioned(right: 4, bottom: 4, child: singleMiniAvatar(memberIds[3], 44, bg: const Color(0xFF334155))),
               ],
             );
           }
@@ -287,7 +300,6 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 🎯 트립토 및 나간 유저 완전히 제거된 리스트 할당
     final cleanMembers = _cleanActiveMemberIds;
 
     return Scaffold(
@@ -318,7 +330,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
           const SizedBox(height: 35),
           
           Center(
-            child: _buildCompositeAvatar(cleanMembers, widget.userNamesMap),
+            child: _buildCompositeAvatar(cleanMembers, widget.userNamesMap, widget.userProfileImagesMap),
           ),
           const SizedBox(height: 25),
           
@@ -346,7 +358,6 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
             child: const Text('채팅방 참여자 목록', style: TextStyle(color: Color(0xFF64748B), fontSize: 14, fontFamily: 'Pretendard', fontWeight: FontWeight.bold)),
           ),
           
-          // 🎯 참여자 목록에서 트립토(-1) 및 나간 유저 완전히 제거
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
@@ -356,6 +367,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
                 
                 final String memberName = widget.userNamesMap[id] ?? '유저';
                 final String shortName = memberName.isNotEmpty ? memberName.substring(0, 1) : '유';
+                final String? profileImgUrl = widget.userProfileImagesMap?[id];
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
@@ -367,9 +379,31 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                     onTap: null, 
-                    leading: CircleAvatar(
-                      backgroundColor: isMe ? const Color(0xFF6241D9) : const Color(0xFFCBD5E1),
-                      child: Text(isMe ? '나' : shortName, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                    // 🎯 참여자 리스트에서 유저별 S3 프로필 이미지 로드
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isMe ? const Color(0xFF6241D9) : const Color(0xFFCBD5E1),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      alignment: Alignment.center,
+                      child: (profileImgUrl != null && profileImgUrl.isNotEmpty)
+                          ? Image.network(
+                              profileImgUrl,
+                              width: 36,
+                              height: 36,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Text(
+                                isMe ? '나' : shortName,
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+                              ),
+                            )
+                          : Text(
+                              isMe ? '나' : shortName,
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+                            ),
                     ),
                     title: Row(
                       children: [

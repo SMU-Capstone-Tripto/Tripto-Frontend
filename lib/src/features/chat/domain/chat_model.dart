@@ -103,91 +103,148 @@ class ChatModel {
       }
     }
 
-    // 3. 멤버 수집
-    List<dynamic> members = [];
-    if (json['member_ids'] is List) {
-      members = List.from(json['member_ids']);
-    } else if (json['invited_user_ids'] is List) {
-      members = List.from(json['invited_user_ids']);
-    } else if (json['members'] is List) {
-      members = List.from(json['members']);
+    // 🎯 3. [핵심 수집기]: 유저 ID 기준 백엔드 전체 유저 프로필 만능 통합 파싱
+    final Map<int, Map<String, dynamic>> userStore = {};
+
+    Map<String, dynamic> getOrInitUser(int uid) {
+      return userStore.putIfAbsent(uid, () => {
+        'id': uid,
+        'nickname': '',
+        'profile_image': null,
+      });
     }
 
-    Map<String, dynamic>? parsedUserNames;
-    if (json['user_names'] is Map) {
-      parsedUserNames = Map<String, dynamic>.from(json['user_names']);
+    // (A) 백엔드 리스트 형태 객체 수집
+    final List<dynamic> rawMemberList = [];
+    for (var key in ['members', 'user_profiles', 'profiles', 'member_ids', 'invited_user_ids', 'users', 'participants']) {
+      if (json[key] is List) {
+        rawMemberList.addAll(json[key] as List);
+      }
     }
 
-    final bool isAiRoom = json['type'] == 'ai' || 
-                         members.contains(-1) || 
-                         members.contains('-1') ||
-                         roomName.toLowerCase().contains('tripto') || 
-                         roomName.contains('트립토');
+    final List<int> memberIdsOnly = [];
 
-    // 4. 유저 닉네임 정제 Map
-    Map<String, String> cleanedUserNames = {};
-    if (parsedUserNames != null) {
-      parsedUserNames.forEach((key, val) {
-        String nick = '';
-        if (val is Map) {
-          nick = val['nickname']?.toString() ?? val['name']?.toString() ?? '';
-        } else if (val != null) {
-          nick = val.toString();
+    for (var item in rawMemberList) {
+      if (item is Map) {
+        final int? uid = int.tryParse(item['id']?.toString() ?? item['user_id']?.toString() ?? item['friend_id']?.toString() ?? '');
+        if (uid != null) {
+          if (!memberIdsOnly.contains(uid)) memberIdsOnly.add(uid);
+          var u = getOrInitUser(uid);
+          String? nick = item['nickname']?.toString() ?? item['name']?.toString() ?? item['username']?.toString();
+          String? img = item['profile_image']?.toString() ?? item['profile_img']?.toString() ?? item['image']?.toString() ?? item['user_image']?.toString() ?? item['avatar']?.toString();
+          if (nick != null && nick.trim().isNotEmpty) u['nickname'] = nick.trim();
+          if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
         }
+      } else if (item != null) {
+        final int? uid = int.tryParse(item.toString());
+        if (uid != null) {
+          if (!memberIdsOnly.contains(uid)) memberIdsOnly.add(uid);
+          getOrInitUser(uid);
+        }
+      }
+    }
 
-        nick = nick.replaceAll('<', '').replaceAll('>', '').replaceAll('(', '').replaceAll(')', '').trim();
-
-        if (nick.isEmpty || 
-            nick.contains('대화상대') || 
-            nick.contains('알수없음') || 
-            nick.contains('알 수 없음') || 
-            RegExp(r'^유저\d+$').hasMatch(nick)) {
-          cleanedUserNames[key.toString()] = (key.toString() == '-1') ? '트립토 AI' : '(알수없음)';
-        } else {
-          cleanedUserNames[key.toString()] = nick;
+    // (B) 백엔드 Map 형태 닉네임 수집
+    if (json['user_names'] is Map) {
+      (json['user_names'] as Map).forEach((k, v) {
+        final int? uid = int.tryParse(k.toString());
+        if (uid != null) {
+          var u = getOrInitUser(uid);
+          if (v is Map) {
+            String? nick = v['nickname']?.toString() ?? v['name']?.toString();
+            String? img = v['profile_image']?.toString() ?? v['profile_img']?.toString() ?? v['image']?.toString();
+            if (nick != null && nick.trim().isNotEmpty) u['nickname'] = nick.trim();
+            if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
+          } else if (v != null && v.toString().trim().isNotEmpty) {
+            u['nickname'] = v.toString().trim();
+          }
         }
       });
     }
 
-    // 5. 트립토(-1) & 나간 유저('(알수없음)')를 완전히 제외한 인간 프로필 수집
-    List<Map<String, String?>> memberProfiles = [];
-    List<String> activeHumanNicknames = [];
-
-    // 🎯 [타입 오류 완치 지점]: 명시적 if-else 분기로 Object 타입 추론 차단
-    Iterable<dynamic> targetIds;
-    if (members.isNotEmpty) {
-      targetIds = members;
-    } else if (parsedUserNames != null) {
-      targetIds = parsedUserNames.keys;
-    } else {
-      targetIds = const [];
-    }
-
-    for (var id in targetIds) {
-      final String sId = id.toString();
-      if (sId == '-1') continue;
-
-      String nick = cleanedUserNames[sId] ?? '';
-
-      if (nick == '(알수없음)' || nick.isEmpty) continue;
-
-      String? imgUrl;
-      if (parsedUserNames != null && parsedUserNames[sId] is Map) {
-        imgUrl = parsedUserNames[sId]['profile_image']?.toString();
-      }
-
-      if ((imgUrl == null || imgUrl.isEmpty) && json['user_images'] is Map) {
-        imgUrl = json['user_images'][sId]?.toString();
-      }
-
-      activeHumanNicknames.add(nick);
-
-      if (memberProfiles.length < 4) {
-        memberProfiles.add({
-          'nickname': nick,
-          'profile_image': (imgUrl != null && imgUrl.isNotEmpty) ? imgUrl : null,
+    // (C) 백엔드 Map 형태 이미지 수집
+    for (var key in ['user_images', 'profile_images', 'user_profile_images', 'images', 'avatars']) {
+      if (json[key] is Map) {
+        (json[key] as Map).forEach((k, v) {
+          final int? uid = int.tryParse(k.toString());
+          if (uid != null && v != null) {
+            var u = getOrInitUser(uid);
+            if (v is Map) {
+              String? img = v['profile_image']?.toString() ?? v['profile_img']?.toString() ?? v['image']?.toString();
+              if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
+            } else if (v.toString().trim().isNotEmpty) {
+              u['profile_image'] = v.toString().trim();
+            }
+          }
         });
       }
+    }
+
+    // (D) 1:1 대화방 루트 직접 이미지 Key 감지
+    for (var imgKey in ['partner_profile_image', 'opponent_profile_image', 'target_profile_image', 'profile_image', 'image']) {
+      if (json[imgKey] != null && json[imgKey].toString().trim().isNotEmpty) {
+        final String directImg = json[imgKey].toString().trim();
+        for (var uid in userStore.keys) {
+          if (uid != -1 && (myUserId == 0 || uid != myUserId)) {
+            if (userStore[uid]!['profile_image'] == null) {
+              userStore[uid]!['profile_image'] = directImg;
+            }
+          }
+        }
+      }
+    }
+
+    final bool isAiRoom = json['type'] == 'ai' || 
+                         memberIdsOnly.contains(-1) || 
+                         userStore.containsKey(-1) ||
+                         roomName.toLowerCase().contains('tripto') || 
+                         roomName.contains('트립토');
+
+    // 4. 인간 유저 프로필 및 닉네임 정제
+    List<Map<String, String?>> humanProfiles = [];
+    List<String> activeHumanNicknames = [];
+    Map<String, String> cleanedUserNames = {};
+
+    userStore.forEach((uid, uData) {
+      final String sId = uid.toString();
+      if (uid == -1) {
+        cleanedUserNames['-1'] = '트립토 AI';
+        return;
+      }
+
+      String rawNick = uData['nickname']?.toString().trim() ?? '';
+      rawNick = rawNick.replaceAll('<', '').replaceAll('>', '').replaceAll('(', '').replaceAll(')', '').trim();
+
+      bool isInvalid = rawNick.isEmpty || 
+                       rawNick.contains('대화상대') || 
+                       rawNick.contains('알수없음') || 
+                       rawNick.contains('알 수 없음') || 
+                       RegExp(r'^유저\d+$').hasMatch(rawNick);
+
+      String displayNick = isInvalid ? '유저 $uid' : rawNick;
+      cleanedUserNames[sId] = isInvalid ? '(알수없음)' : displayNick;
+
+      String? imgUrl = uData['profile_image']?.toString().trim();
+      if (imgUrl != null && imgUrl.isEmpty) imgUrl = null;
+
+      activeHumanNicknames.add(displayNick);
+
+      humanProfiles.add({
+        'id': sId,
+        'nickname': displayNick,
+        'profile_image': imgUrl,
+      });
+    });
+
+    // 🎯 [1:1 대화방 최우선 정제]: 1:1 대화방일 때 내 프로필 대신 상대방 프로필 사진을 목록 대표 아바타로 설정
+    if (myUserId > 0 && humanProfiles.length == 2) {
+      humanProfiles.sort((a, b) {
+        if (a['id'] == myUserId.toString()) return 1;
+        if (b['id'] == myUserId.toString()) return -1;
+        return 0;
+      });
+      final opponentProfile = humanProfiles.firstWhere((p) => p['id'] != myUserId.toString(), orElse: () => humanProfiles[0]);
+      humanProfiles = [opponentProfile];
     }
 
     roomName = roomName.replaceAll('<', '').replaceAll('>', '').trim();
@@ -210,9 +267,9 @@ class ChatModel {
       lastTime: formattedTime,
       unreadCount: int.tryParse(json['unread_count']?.toString() ?? '0') ?? 0,
       type: isAiRoom ? ChatType.ai : ChatType.user,
-      memberIds: members,
+      memberIds: memberIdsOnly.isNotEmpty ? memberIdsOnly : userStore.keys.toList(),
       userNames: cleanedUserNames,
-      humanProfiles: memberProfiles,
+      humanProfiles: humanProfiles,
       derivedMemberCount: humanCount,
       updatedAt: parsedDate,
     );

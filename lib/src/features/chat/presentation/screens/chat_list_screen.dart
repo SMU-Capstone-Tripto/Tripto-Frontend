@@ -6,8 +6,9 @@ import 'package:tripto/src/features/chat/domain/chat_model.dart';
 import 'package:tripto/src/features/chat/presentation/chat_provider.dart';
 import 'package:tripto/src/features/chat/presentation/screens/chat_add_screen.dart';
 import 'package:tripto/src/features/chat/presentation/screens/chat_room_screen.dart';
+// 🎯 [핵심 추가]: profileProvider import
+import 'package:tripto/src/features/settings/presentation/profile_provider.dart';
 import 'package:http/http.dart' as http; 
-
 class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
 
@@ -98,8 +99,12 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
     );
   }
 
-  /// 🎯 [일반 채팅방과 동일하게 출력되는 통합 아바타 함수]
+  /// 🎯 [통합 아바타: 내 프로필 보완 로직 적용]
   Widget _buildListCompositeAvatar(ChatModel room) {
+    final myProfile = ref.watch(profileProvider).value;
+    final String? myProfileImg = myProfile?.profileImage;
+    final String myNickname = myProfile?.nickname ?? '신지녕임니당';
+
     final profiles = room.humanProfiles;
 
     if (profiles.isEmpty) {
@@ -117,9 +122,20 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
 
     final int count = profiles.length;
 
-    Widget singleMiniAvatar(Map<String, String?> profile, double size, {Color? bg}) {
-      final String nick = profile['nickname'] ?? '나';
-      final String? imgUrl = profile['profile_image'];
+    Widget singleMiniAvatar(Map<String, dynamic> profile, double size, {Color? bg}) {
+      final String nick = (profile['nickname'] ?? profile['name'] ?? profile['username'] ?? '나').toString().trim();
+      
+      String? rawImg = profile['profile_image'] ?? 
+                       profile['profile_img'] ?? 
+                       profile['image'] ?? 
+                       profile['user_image'] ?? 
+                       profile['avatar'];
+
+      if ((rawImg == null || rawImg.toString().trim().isEmpty) && (nick == myNickname || nick == '나')) {
+        rawImg = myProfileImg;
+      }
+
+      final String? imgUrl = (rawImg != null && rawImg.toString().trim().isNotEmpty) ? rawImg.toString().trim() : null;
       final String initial = nick.isNotEmpty ? nick.substring(0, 1) : '나';
 
       return Container(
@@ -354,6 +370,20 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
   Widget _buildPureCardBody(ChatModel room, int parsedRoomId) {
     bool isBot = room.type == ChatType.ai;
 
+    final Map<int, String> roomMemberNames = {};
+    final Map<int, String?> roomMemberImages = {};
+
+    for (var p in room.humanProfiles) {
+      final int? uId = int.tryParse(p['id']?.toString() ?? p['user_id']?.toString() ?? '');
+      final String? nick = p['nickname'] ?? p['name'];
+      final String? img = p['profile_image'] ?? p['profile_img'] ?? p['image'] ?? p['user_image'];
+
+      if (uId != null) {
+        if (nick != null && nick.isNotEmpty) roomMemberNames[uId] = nick;
+        if (img != null && img.isNotEmpty) roomMemberImages[uId] = img;
+      }
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -374,6 +404,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
                   title: room.name,
                   isBotRoom: isBot,
                   roomId: parsedRoomId, 
+                  initialMemberNames: roomMemberNames.isNotEmpty ? roomMemberNames : null,
+                  initialMemberImages: roomMemberImages.isNotEmpty ? roomMemberImages : null,
                 ),
               ),
             ).then((_) {
@@ -403,7 +435,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                // 🎯 일반 채팅방과 동일하게 인원수 표시
                                 if (room.derivedMemberCount > 0) ...[
                                   const SizedBox(width: 5), 
                                   Text(

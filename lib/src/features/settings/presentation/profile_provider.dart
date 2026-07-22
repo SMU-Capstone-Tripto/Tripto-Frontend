@@ -27,24 +27,28 @@ class ProfileImageNotifier extends StateNotifier<AsyncValue<void>> {
       }
       debugPrint('📸 이미지 선택/크롭 완료: ${file.path}');
 
-      // 2. /uploads/presigned-url 호출 (기본값: image/jpeg, profile)
+      // 2. Presigned URL 발급 요청
       final urls = await _repository.getPresignedUrl();
       
-      if (urls == null || urls['uploadUrl']!.isEmpty) {
-        throw Exception('Presigned URL 발급 실패');
+      // 🎯 [핵심 수정]: ! 연산자 대신 null-safe 처리
+      final String uploadUrl = urls?['uploadUrl'] ?? '';
+      final String imageUrl = urls?['imageUrl'] ?? '';
+
+      if (uploadUrl.isEmpty || imageUrl.isEmpty) {
+        throw Exception('Presigned URL 또는 이미지 URL 생성 실패');
       }
-      debugPrint('🔗 Presigned URL 발급 성공: ${urls['uploadUrl']}');
+      debugPrint('🔗 Presigned URL 발급 성공: $uploadUrl');
 
       // 3. S3 직접 업로드 (PUT)
       final isUploaded = await ImageUploadService.uploadToS3(
-        presignedUrl: urls['upload_url']!,
+        presignedUrl: uploadUrl,
         imageFile: file,
       );
       if (!isUploaded) throw Exception('S3 직접 업로드(PUT) 실패');
       debugPrint('☁️ S3 이미지 업로드 완료!');
 
       // 4. DB에 최종 이미지 URL 업데이트
-      await _repository.updateMe(profileImage: urls['imageUrl']);
+      await _repository.updateMe(profileImage: imageUrl);
       debugPrint('💾 프로필 DB URL 업데이트 완료!');
 
       // 5. 화면 캐시 강제 무효화로 UI 갱신

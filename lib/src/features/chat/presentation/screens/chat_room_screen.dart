@@ -30,6 +30,7 @@ class ChatRoomScreen extends ConsumerStatefulWidget {
   final bool isBotRoom;
   final int roomId; 
   final Map<int, String>? initialMemberNames; 
+  final Map<int, String?>? initialMemberImages;
 
   const ChatRoomScreen({
     super.key, 
@@ -37,6 +38,7 @@ class ChatRoomScreen extends ConsumerStatefulWidget {
     this.isBotRoom = false,
     required this.roomId, 
     this.initialMemberNames, 
+    this.initialMemberImages,
   });
 
   @override
@@ -56,6 +58,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final Map<int, int> _userLastReadMap = {}; 
   final Set<int> _allRoomMembers = {}; 
   final Map<int, String> _userNamesMap = {}; 
+  final Map<int, String?> _userProfileImagesMap = {};
 
   String? _currentAiStatus; 
   bool _showVoteConfirmButtons = false; 
@@ -67,6 +70,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     super.initState();
     if (widget.initialMemberNames != null) {
       _userNamesMap.addAll(widget.initialMemberNames!);
+    }
+    if (widget.initialMemberImages != null) {
+      _userProfileImagesMap.addAll(widget.initialMemberImages!);
     }
     _initializeChatRoom();
   }
@@ -87,6 +93,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           _myUserId = int.tryParse(userData['id']?.toString() ?? userData['user_id']?.toString() ?? '2') ?? 2;
           _allRoomMembers.add(_myUserId);
           _userNamesMap[_myUserId] = userData['nickname']?.toString() ?? userData['name']?.toString() ?? userData['username']?.toString() ?? '나';
+          
+          final String? myProfileImg = userData['profile_image']?.toString() ?? userData['profile_img']?.toString();
+          if (myProfileImg != null && myProfileImg.isNotEmpty) {
+            _userProfileImagesMap[_myUserId] = myProfileImg;
+          }
         });
       }
     } catch (e) {
@@ -116,6 +127,23 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               for (var id in memberIds) {
                 int? parsedId = int.tryParse(id.toString());
                 if (parsedId != null) _allRoomMembers.add(parsedId);
+              }
+            });
+          }
+
+          final dynamic members = currentRoom['members'] ?? currentRoom['user_profiles'] ?? currentRoom['profiles'];
+          if (members is List) {
+            setState(() {
+              for (var m in members) {
+                if (m is Map) {
+                  final int? uId = int.tryParse(m['id']?.toString() ?? m['user_id']?.toString() ?? '');
+                  final String? img = m['profile_image']?.toString() ?? m['profile_img']?.toString();
+                  final String? nick = m['nickname']?.toString() ?? m['name']?.toString();
+                  if (uId != null) {
+                    if (img != null && img.isNotEmpty) _userProfileImagesMap[uId] = img;
+                    if (nick != null && nick.isNotEmpty) _userNamesMap[uId] = nick;
+                  }
+                }
               }
             });
           }
@@ -161,6 +189,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               }
             });
           }
+
+          final dynamic rawUserImages = responseData['user_images'] ?? responseData['profile_images'] ?? responseData['user_profiles'];
+          if (rawUserImages is Map) {
+            rawUserImages.forEach((key, value) {
+              final int? uId = int.tryParse(key.toString());
+              final String? img = value?.toString();
+              if (uId != null && img != null && img.trim().isNotEmpty) {
+                _userProfileImagesMap[uId] = img;
+              }
+            });
+          }
         } 
         else if (responseData is List) {
           historyList = responseData;
@@ -176,9 +215,15 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           final int msgId = int.tryParse(msgMap['message_id']?.toString() ?? '0') ?? 0;
           final int senderId = int.tryParse(msgMap['sender_id']?.toString() ?? '0') ?? 0;
           final String content = msgMap['content']?.toString() ?? '';
+          final String? senderImg = msgMap['sender_profile_image']?.toString() ?? msgMap['profile_image']?.toString();
           
           if (content.trim().isEmpty) continue;
-          if (senderId > 0) _allRoomMembers.add(senderId);
+          if (senderId > 0) {
+            _allRoomMembers.add(senderId);
+            if (senderImg != null && senderImg.isNotEmpty) {
+              _userProfileImagesMap[senderId] = senderImg;
+            }
+          }
 
           bool isAiMessageInHistory = content.startsWith('{"tripto_card_type"');
           int mappedSenderId = senderId;
@@ -245,11 +290,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
     try {
       _webSocket = await WebSocket.connect(fullWsPath, headers: wsHeaders);
-      debugPrint('🟢 웹소켓 링크 연결 성공');
+      debugPrint('🟢 웹소켓 링크 연결 성공: $fullWsPath');
       
       _wsSubscription = _webSocket?.listen(
-        (rawData) => _parseAndAppendMessage(rawData.toString()),
-        onError: (err) => debugPrint('웹소켓 에러: $err'),
+        (rawData) {
+          // 🎯 서버 응답 실시간 출력 로그 추가
+          debugPrint('📩 [웹소켓 서버 응답]: $rawData');
+          _parseAndAppendMessage(rawData.toString());
+        },
+        onError: (err) => debugPrint('❌ 웹소켓 에러: $err'),
+        onDone: () => debugPrint('⚠️ 웹소켓 연결 종료됨'),
       );
     } catch (e) {
       debugPrint('❌ 웹소켓 연결 실패: $e');
@@ -271,6 +321,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         final String? socketNick = payload['sender_nickname']?.toString();
         if (senderId > 0 && socketNick != null && socketNick.isNotEmpty) {
           _userNamesMap[senderId] = socketNick;
+        }
+
+        final String? socketImg = payload['sender_profile_image']?.toString() ?? payload['profile_image']?.toString();
+        if (senderId > 0 && socketImg != null && socketImg.isNotEmpty) {
+          _userProfileImagesMap[senderId] = socketImg;
         }
 
         if (msgId > 0 && _messages.any((m) => m['message_id'] == msgId)) {
@@ -477,8 +532,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final String originalText = _msgController.text.trim();
     _msgController.clear();
 
-    final Map<String, dynamic> socketRequestPayload = {"action": "send_message", "content": originalText};
-    _webSocket?.add(jsonEncode(socketRequestPayload));
+    // 🎯 [핵심 방어 코드 및 전송 디버그 로그 추가]
+    if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
+      final Map<String, dynamic> socketRequestPayload = {
+        "action": "send_message",
+        "content": originalText,
+      };
+      debugPrint('📤 [웹소켓 전송]: ${jsonEncode(socketRequestPayload)}');
+      _webSocket!.add(jsonEncode(socketRequestPayload));
+    } else {
+      debugPrint('⚠️ 웹소켓 미연결 상태 (readyState: ${_webSocket?.readyState}) - 전송 불가');
+    }
     
     final now = DateTime.now();
     final String timeStr = '${now.hour >= 12 ? "오후" : "오전"} ${(now.hour % 12 == 0 ? 12 : now.hour % 12)}:${now.minute.toString().padLeft(2, '0')}';
@@ -581,6 +645,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                       roomId: widget.roomId, 
                       activeMemberIds: _allRoomMembers.toList(), 
                       userNamesMap: _userNamesMap, 
+                      userProfileImagesMap: _userProfileImagesMap,
                       ownerId: _roomOwnerId, 
                     ),
                   ),
@@ -722,7 +787,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
     final bool isAi = (senderId == -1);
 
-    // 🎯 [나간 유저 (알수없음) 보정]
     String userRealName = '';
     if (isAi) {
       userRealName = 'tripto';
@@ -740,6 +804,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
 
     final String initialLetter = isAi ? '🤖' : (userRealName == '(알수없음)' ? '?' : userRealName.substring(0, 1));
+    final String? profileImgUrl = isAi ? null : _userProfileImagesMap[senderId];
 
     bool isOptimizedCard = false;
     bool isAiText = false;
@@ -783,12 +848,42 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (!isMe) ...[
-                CircleAvatar(
-                  radius: 18, 
-                  backgroundColor: isAi ? const Color(0xFFF5F3FF) : (userRealName == '(알수없음)' ? const Color(0xFFE2E8F0) : const Color(0x26524582)), 
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isAi ? const Color(0xFFF5F3FF) : (userRealName == '(알수없음)' ? const Color(0xFFE2E8F0) : const Color(0x26524582)),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  alignment: Alignment.center,
                   child: isAi 
                     ? const Icon(Icons.auto_awesome, size: 16, color: Color(0xFF524582))
-                    : Text(initialLetter, style: TextStyle(color: userRealName == '(알수없음)' ? const Color(0xFF64748B) : const Color(0xFF524582), fontSize: 12, fontWeight: FontWeight.bold)),
+                    : (profileImgUrl != null && profileImgUrl.isNotEmpty)
+                        ? Image.network(
+                            profileImgUrl,
+                            width: 36,
+                            height: 36,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Text(
+                              initialLetter,
+                              style: TextStyle(
+                                color: userRealName == '(알수없음)' ? const Color(0xFF64748B) : const Color(0xFF524582),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Pretendard',
+                              ),
+                            ),
+                          )
+                        : Text(
+                            initialLetter,
+                            style: TextStyle(
+                              color: userRealName == '(알수없음)' ? const Color(0xFF64748B) : const Color(0xFF524582),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Pretendard',
+                            ),
+                          ),
                 ),
                 const SizedBox(width: 10),
               ],
