@@ -25,8 +25,8 @@ class FriendModel {
         json.containsKey('user') ? json['user'] as Map<String, dynamic> : json;
 
     return FriendModel(
-      friendshipId: (json['friendship_id'] as num ?? 0).toInt(),
-      friendId: (data['friend_id'] as num ?? 0).toInt(),
+      friendshipId: (json['friendship_id'] as num? ?? 0).toInt(),
+      friendId: (data['friend_id'] as num? ?? 0).toInt(),
       uniqueId: (data['friend_unique_id'] ?? '').toString(),
       nickname: (data['nickname'] ?? '이름 없음').toString(),
       statusMessage: (data['status_message'] ?? '').toString(),

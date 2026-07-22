@@ -23,7 +23,6 @@ class FriendNotifier extends AsyncNotifier<List<FriendModel>> {
 
       if (state.hasValue) {
         final currentList = state.value!;
-        // uniqueId 대신 friendId로 비교하도록 변경
         state = AsyncData(
             currentList.where((f) => f.friendshipId != friendshipId).toList());
       }

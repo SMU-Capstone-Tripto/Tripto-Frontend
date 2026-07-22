@@ -30,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _goToMain() {
     if (!mounted) return;
-    context.go('/home'); // 👈 GoRouter에 등록된 홈 화면 주소로 이동
+    context.go('/home');
   }
 
   Future<void> _handleLocalLogin() async {
