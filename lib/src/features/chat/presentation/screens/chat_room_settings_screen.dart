@@ -7,7 +7,6 @@ import 'photo_album_screen.dart';
 import 'vote_tabs_screen.dart';
 import 'friend_invite_screen.dart';
 
-/// 👑 유저님이 첨부해주신 수평 바 분리형 플랫 골드 왕관을 그리는 전용 패스 페인터
 class FlatCrownPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -70,6 +69,24 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
     _fetchMyProfile();
   }
 
+  // 🎯 [트립토 -1 및 나간 유저 완전히 제거된 멤버 ID 리스트 반환]
+  List<int> get _cleanActiveMemberIds {
+    return widget.activeMemberIds.where((id) {
+      if (id == -1) return false; // 트립토 원천 제거
+
+      String rawNick = widget.userNamesMap[id]?.trim() ?? '';
+      rawNick = rawNick.replaceAll('<', '').replaceAll('>', '').replaceAll('(', '').replaceAll(')', '').trim();
+
+      bool isInvalid = rawNick.isEmpty || 
+                       rawNick.contains('대화상대') || 
+                       rawNick.contains('알수없음') || 
+                       rawNick.contains('알 수 없음') || 
+                       RegExp(r'^유저\d+$').hasMatch(rawNick);
+
+      return !isInvalid; // 나간 유저 제외
+    }).toList();
+  }
+
   Future<void> _fetchMyProfile() async {
     try {
       final response = await http.get(Uri.parse('${AuthStorage.baseUrl}/auth/me'), headers: AuthStorage.authHeaders);
@@ -92,7 +109,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
         debugPrint('방 이름 서버 변경 성공');
       }
     } catch (e) {
-      debugPrint('방 이름 백엔드 동기화 실패 플레이스홀더: $e');
+      debugPrint('방 이름 백엔드 동기화 실패: $e');
     }
   }
 
@@ -205,14 +222,10 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
     );
   }
 
-  /// 📸 [완치 연동 부위]: 설정창 대표 그래픽 드로잉 시 트립토(ID: -1)를 확실히 거르고 실제 친구만 묶는 멀티 분할 아바타
   Widget _buildCompositeAvatar(List<int> memberIds, Map<int, String> namesMap) {
-    // 🎯 [트립토 유령화 락]: 멤버 ID 목록을 순회할 때 ID가 -1이거나 이름이 tripto인 봇은 원천 제외(Filter)
-    final List<int> pureHumanIds = memberIds.where((id) => id != -1).toList();
-
-    final List<String> shortNames = pureHumanIds.map((id) {
-      final name = namesMap[id] ?? '대';
-      return name.isNotEmpty ? name.substring(0, 1) : '대';
+    final List<String> shortNames = memberIds.map((id) {
+      final name = namesMap[id] ?? '나';
+      return name.isNotEmpty ? name.substring(0, 1) : '나';
     }).toList();
 
     final int count = shortNames.length;
@@ -237,11 +250,9 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
       alignment: Alignment.center,
       child: Builder(
         builder: (context) {
-          // Case 1: 나 혼자 있거나 아무도 없을 때
           if (count <= 1) {
             return singleMiniAvatar(shortNames.isNotEmpty ? shortNames[0] : '나', 100, bg: const Color(0xFF6241D9));
           }
-          // Case 2: 나 포함 실제 친구 2명방 (대각선 스플릿 구도)
           else if (count == 2) {
             return Stack(
               children: [
@@ -250,7 +261,6 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
               ],
             );
           }
-          // Case 3: 나 포함 실제 친구 3명방 (피드백 이미지와 일치하는 정삼각형 구도)
           else if (count == 3) {
             return Stack(
               children: [
@@ -260,7 +270,6 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
               ],
             );
           }
-          // Case 4: 나 포함 실제 친구 4명 이상방 (피드백 이미지와 일치하는 2x2 그리드 배열 구도)
           else {
             return Stack(
               children: [
@@ -278,6 +287,9 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 🎯 트립토 및 나간 유저 완전히 제거된 리스트 할당
+    final cleanMembers = _cleanActiveMemberIds;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: PreferredSize(
@@ -306,7 +318,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
           const SizedBox(height: 35),
           
           Center(
-            child: _buildCompositeAvatar(widget.activeMemberIds, widget.userNamesMap),
+            child: _buildCompositeAvatar(cleanMembers, widget.userNamesMap),
           ),
           const SizedBox(height: 25),
           
@@ -334,15 +346,16 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
             child: const Text('채팅방 참여자 목록', style: TextStyle(color: Color(0xFF64748B), fontSize: 14, fontFamily: 'Pretendard', fontWeight: FontWeight.bold)),
           ),
           
+          // 🎯 참여자 목록에서 트립토(-1) 및 나간 유저 완전히 제거
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
-              children: widget.activeMemberIds.map((id) {
+              children: cleanMembers.map((id) {
                 final bool isMe = (id == _myUserId);
                 final bool isOwner = (widget.ownerId != null && id == widget.ownerId); 
                 
-                final String memberName = widget.userNamesMap[id] ?? '대화 상대';
-                final String shortName = memberName.isNotEmpty ? memberName.substring(0, 1) : '대';
+                final String memberName = widget.userNamesMap[id] ?? '유저';
+                final String shortName = memberName.isNotEmpty ? memberName.substring(0, 1) : '유';
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),

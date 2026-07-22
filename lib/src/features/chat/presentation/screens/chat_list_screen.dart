@@ -15,34 +15,27 @@ class ChatListScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
 }
 
-class _ChatListScreenState extends ConsumerState<ChatListScreen> {
+class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticKeepAliveClientMixin {
   String _sortType = '최신 순';
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  int _myUserId = 2; 
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    _fetchMyProfile();
-    Future.microtask(() => ref.read(chatProvider.notifier).fetchRooms());
-  }
-
-  Future<void> _fetchMyProfile() async {
-    try {
-      final response = await http.get(Uri.parse('${AuthStorage.baseUrl}/auth/me'), headers: AuthStorage.authHeaders);
-      if (response.statusCode == 200) {
-        final userData = jsonDecode(utf8.decode(response.bodyBytes));
-        setState(() {
-          _myUserId = int.tryParse(userData['id']?.toString() ?? userData['user_id']?.toString() ?? '2') ?? 2;
-        });
+    Future.microtask(() {
+      if (mounted) {
+        ref.read(chatProvider.notifier).fetchRooms();
       }
-    } catch (_) {}
+    });
   }
 
   Future<void> _leaveRoomSilently(int roomId) async {
     try {
-      final targetUrl = '${AuthStorage.baseUrl}/chat/$roomId/leave?user_id=$_myUserId';
+      final targetUrl = '${AuthStorage.baseUrl}/chat/$roomId/leave';
       await http.delete(Uri.parse(targetUrl), headers: AuthStorage.authHeaders);
       ref.read(chatProvider.notifier).fetchRooms();
     } catch (e) {
@@ -50,7 +43,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     }
   }
 
-  /// 🎯 [확인 팝업 연동]: 슬라이드 시 사용자에게 퇴장 의사를 물어보는 커스텀 얼럿창
   Future<bool?> _showLeaveConfirmDialog(String roomName) async {
     return showDialog<bool>(
       context: context,
@@ -77,7 +69,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               children: [
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => Navigator.pop(context, false), // 거절 터치 시 false 토스
+                    onTap: () => Navigator.pop(context, false),
                     child: Container(
                       height: 48, 
                       decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(12)), 
@@ -89,7 +81,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => Navigator.pop(context, true), // 승인 터치 시 true 토스
+                    onTap: () => Navigator.pop(context, true),
                     child: Container(
                       height: 48, 
                       decoration: BoxDecoration(color: const Color(0xFFFF4D4D), borderRadius: BorderRadius.circular(12)), 
@@ -106,77 +98,89 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     );
   }
 
-  String _getCleanLastMessage(String rawMessage) {
-    final trimmed = rawMessage.trim();
-    if (trimmed.isEmpty) return '대화 기록이 없습니다. 첫 메세지를 보내주세요.';
-    if (trimmed.startsWith('{"tripto_card_type"')) {
-      try {
-        final parsed = jsonDecode(trimmed);
-        final String cardType = parsed['tripto_card_type'] ?? '';
-        if (cardType == 'optimized') {
-          return '🗺️ AI 최적화 여행 일정표가 도착했습니다!';
-        } else if (cardType == 'text') {
-          return parsed['content'] ?? '';
-        }
-      } catch (_) {}
-      return '🤖 tripto 가이드 브릿지 메시지';
-    }
-    return rawMessage;
-  }
+  /// 🎯 [일반 채팅방과 동일하게 출력되는 통합 아바타 함수]
+  Widget _buildListCompositeAvatar(ChatModel room) {
+    final profiles = room.humanProfiles;
 
-  Widget _buildListCompositeAvatar(ChatModel room, List<String> parsedNames) {
-    bool isBot = room.type == ChatType.ai;
-    final int count = parsedNames.length;
-
-    Widget singleMiniAvatar(String char, double size, {Color? bg}) {
+    if (profiles.isEmpty) {
       return Container(
-        width: size, height: size,
+        width: 48,
+        height: 48,
         decoration: BoxDecoration(
-          color: bg ?? const Color(0xFFCBD5E1),
-          borderRadius: BorderRadius.circular(size * 0.35), 
+          color: const Color(0xFF6241D9),
+          borderRadius: BorderRadius.circular(18),
         ),
         alignment: Alignment.center,
-        child: Text(
-          char,
-          style: TextStyle(color: Colors.white, fontSize: size * 0.45, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
-        ),
+        child: const Text('나', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
       );
     }
 
-    if (count <= 1) {
-      return singleMiniAvatar(parsedNames.isNotEmpty ? parsedNames[0] : '나', 52, bg: isBot ? const Color(0xFF925DFB) : const Color(0xFF6241D9));
-    }
-    else if (count == 2) {
-      return Stack(
-        children: [
-          Positioned(left: 2, top: 2, child: singleMiniAvatar(parsedNames[0], 28, bg: const Color(0xFF818CF8))),
-          Positioned(right: 2, bottom: 2, child: singleMiniAvatar(parsedNames[1], 28, bg: const Color(0xFF6366F1))),
-        ],
+    final int count = profiles.length;
+
+    Widget singleMiniAvatar(Map<String, String?> profile, double size, {Color? bg}) {
+      final String nick = profile['nickname'] ?? '나';
+      final String? imgUrl = profile['profile_image'];
+      final String initial = nick.isNotEmpty ? nick.substring(0, 1) : '나';
+
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: bg ?? const Color(0xFF6241D9),
+          borderRadius: BorderRadius.circular(size * 0.35), 
+        ),
+        clipBehavior: Clip.antiAlias,
+        alignment: Alignment.center,
+        child: (imgUrl != null && imgUrl.isNotEmpty)
+            ? Image.network(
+                imgUrl,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Text(
+                  initial,
+                  style: TextStyle(color: Colors.white, fontSize: size * 0.45, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+                ),
+              )
+            : Text(
+                initial,
+                style: TextStyle(color: Colors.white, fontSize: size * 0.45, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+              ),
       );
     }
-    else if (count == 3) {
-      return Stack(
-        children: [
-          Positioned(left: 14, top: 2, child: singleMiniAvatar(parsedNames[0], 25, bg: const Color(0xFF94A3B8))),
-          Positioned(left: 1, bottom: 2, child: singleMiniAvatar(parsedNames[1], 25, bg: const Color(0xFF64748B))),
-          Positioned(right: 1, bottom: 2, child: singleMiniAvatar(parsedNames[2], 25, bg: const Color(0xFF475569))),
-        ],
-      );
+
+    if (count == 1) {
+      return singleMiniAvatar(profiles[0], 48, bg: const Color(0xFF6241D9));
     }
-    else {
-      return Stack(
+
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
         children: [
-          Positioned(left: 2, top: 2, child: singleMiniAvatar(parsedNames[0], 23, bg: const Color(0xFF94A3B8))),
-          Positioned(right: 2, top: 2, child: singleMiniAvatar(parsedNames[1], 23, bg: const Color(0xFF64748B))),
-          Positioned(left: 2, bottom: 2, child: singleMiniAvatar(parsedNames[2], 23, bg: const Color(0xFF475569))),
-          Positioned(right: 2, bottom: 2, child: singleMiniAvatar(parsedNames[3], 23, bg: const Color(0xFF334155))),
+          if (count == 2) ...[
+            Positioned(left: 0, top: 0, child: singleMiniAvatar(profiles[0], 26, bg: const Color(0xFF818CF8))),
+            Positioned(right: 0, bottom: 0, child: singleMiniAvatar(profiles[1], 26, bg: const Color(0xFF6366F1))),
+          ] else if (count == 3) ...[
+            Positioned(left: 11, top: 0, child: singleMiniAvatar(profiles[0], 23, bg: const Color(0xFF94A3B8))),
+            Positioned(left: 0, bottom: 0, child: singleMiniAvatar(profiles[1], 23, bg: const Color(0xFF64748B))),
+            Positioned(right: 0, bottom: 0, child: singleMiniAvatar(profiles[2], 23, bg: const Color(0xFF475569))),
+          ] else ...[
+            Positioned(left: 0, top: 0, child: singleMiniAvatar(profiles[0], 22, bg: const Color(0xFF94A3B8))),
+            Positioned(right: 0, top: 0, child: singleMiniAvatar(profiles[1], 22, bg: const Color(0xFF64748B))),
+            Positioned(left: 0, bottom: 0, child: singleMiniAvatar(profiles[2], 22, bg: const Color(0xFF475569))),
+            Positioned(right: 0, bottom: 0, child: singleMiniAvatar(profiles[3], 22, bg: const Color(0xFF334155))),
+          ],
         ],
-      );
-    }
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     final allRooms = ref.watch(sortedChatProvider);
 
     List<ChatModel> filteredRooms = allRooms.where((room) {
@@ -213,6 +217,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                               _sortType = value;
                               if (value == '최신 순') {
                                 ref.read(chatSortProvider.notifier).state = ChatSortOrder.newest;
+                              } else if (value == '안  읽음') {
+                                ref.read(chatSortProvider.notifier).state = ChatSortOrder.unread;
                               } else {
                                 ref.read(chatSortProvider.notifier).state = ChatSortOrder.oldest;
                               }
@@ -300,7 +306,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                       itemCount: filteredRooms.length,
-                      itemBuilder: (context, index) => _buildPremiumDismissibleCard(filteredRooms[index]),
+                      itemBuilder: (context, index) => _buildDismissibleCard(filteredRooms[index]),
                     ),
             ),
           )
@@ -309,19 +315,16 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     );
   }
 
-  Widget _buildPremiumDismissibleCard(ChatModel room) {
+  Widget _buildDismissibleCard(ChatModel room) {
     final int parsedRoomId = int.tryParse(room.id.toString()) ?? 0;
 
     return Dismissible(
-      key: Key('room_${room.id}'),
+      key: ValueKey('dismiss_room_${room.id}'),
       direction: DismissDirection.endToStart, 
-      
-      // ── 🎯 [안전 교정 장치]: 손을 놓았을 때 즉시 삭제되지 않고 확인 패널의 동의 유무를 기다리게 지시 ──
       confirmDismiss: (direction) async {
         final bool? result = await _showLeaveConfirmDialog(room.name);
-        return result ?? false; // 나가기를 누르면 true를 반환하여 리스트에서 삭제 처리 돌입
+        return result ?? false; 
       },
-      
       background: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -343,13 +346,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         if (parsedRoomId > 0) {
           _leaveRoomSilently(parsedRoomId);
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('\'${room.name}\' 채팅방에서 퇴장했습니다.'),
-            duration: const Duration(seconds: 2),
-            backgroundColor: const Color(0xFF1E2939),
-          ),
-        );
       },
       child: _buildPureCardBody(room, parsedRoomId),
     );
@@ -357,46 +353,19 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 
   Widget _buildPureCardBody(ChatModel room, int parsedRoomId) {
     bool isBot = room.type == ChatType.ai;
-    List<String> parsedDisplayLetters = [];
-    int derivedCount = 1;
-
-    try {
-      final dynamic modelRaw = room;
-      final List<dynamic> memberIds = modelRaw.memberIds ?? [];
-      final List<dynamic> humanIds = memberIds.where((id) => id.toString() != '-1').toList();
-
-      if (humanIds.isNotEmpty && modelRaw.userNames != null && modelRaw.userNames is Map) {
-        for (var id in humanIds) {
-          String name = modelRaw.userNames[id]?.toString() ?? '';
-          if (name.isNotEmpty) parsedDisplayLetters.add(name.substring(0, 1));
-        }
-        derivedCount = humanIds.length;
-      } else {
-        final List<String> nameTokens = room.name.split(RegExp(r'[,\s]+')).where((t) => t.trim().isNotEmpty).toList();
-        for (var token in nameTokens) {
-          if (token != 'tripto' && token != '트립토') {
-            parsedDisplayLetters.add(token.substring(0, 1));
-          }
-        }
-        derivedCount = parsedDisplayLetters.length;
-        if (derivedCount <= 0) derivedCount = 1;
-      }
-    } catch (_) {
-      derivedCount = 1;
-    }
-
-    if (parsedDisplayLetters.isEmpty) {
-      parsedDisplayLetters.add(isBot ? '🤖' : '나');
-    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFEDF2F7), width: 1.0), boxShadow: [
-        BoxShadow(color: const Color(0xFF1E2939).withOpacity(0.03), blurRadius: 10, offset: Offset(0, 4))
-      ]),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: ListTile(
+      decoration: BoxDecoration(
+        color: Colors.white, 
+        borderRadius: BorderRadius.circular(18), 
+        border: Border.all(color: const Color(0xFFEDF2F7), width: 1.0), 
+        boxShadow: [BoxShadow(color: const Color(0xFF1E2939).withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
           onTap: () {
             Navigator.push(
               context,
@@ -407,57 +376,81 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                   roomId: parsedRoomId, 
                 ),
               ),
-            );
+            ).then((_) {
+              ref.read(chatProvider.notifier).fetchRooms();
+            });
           },
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          leading: _buildListCompositeAvatar(room, parsedDisplayLetters),
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        room.name, 
-                        style: const TextStyle(color: Color(0xFF1E2939), fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Pretendard', letterSpacing: -0.4), 
-                        maxLines: 1, 
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (!isBot) ...[
-                      const SizedBox(width: 8), 
-                      Text(
-                        '$derivedCount', 
-                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontWeight: FontWeight.w500, fontFamily: 'Pretendard'),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12), 
-              Text(
-                room.lastTime, 
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontFamily: 'Pretendard'),
-                textAlign: TextAlign.right,
-              ),
-            ],
-          ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: 6.0),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                Expanded(child: Text(_getCleanLastMessage(room.lastMessage), style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontFamily: 'Pretendard'), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                if (room.unreadCount > 0) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(10)),
-                    child: Text('${room.unreadCount}', style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: 'Pretendard', fontWeight: FontWeight.bold)),
+                _buildListCompositeAvatar(room),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    room.name, 
+                                    style: const TextStyle(color: Color(0xFF1E2939), fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Pretendard', letterSpacing: -0.4), 
+                                    maxLines: 1, 
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                // 🎯 일반 채팅방과 동일하게 인원수 표시
+                                if (room.derivedMemberCount > 0) ...[
+                                  const SizedBox(width: 5), 
+                                  Text(
+                                    '${room.derivedMemberCount}', 
+                                    style: const TextStyle(color: Color(0xFF7C5CFC), fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            room.lastTime, 
+                            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontFamily: 'Pretendard'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              room.cleanLastMessage, 
+                              style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontFamily: 'Pretendard'), 
+                              maxLines: 1, 
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (room.unreadCount > 0) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEF4444), 
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '${room.unreadCount}', 
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontFamily: 'Pretendard', fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ]
+                        ],
+                      ),
+                    ],
                   ),
-                ]
+                ),
               ],
             ),
           ),

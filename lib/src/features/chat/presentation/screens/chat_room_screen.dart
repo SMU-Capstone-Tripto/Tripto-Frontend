@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import 'package:tripto/src/core/auth_storage.dart';
 import 'chat_room_settings_screen.dart';
 
-/// 🤖 AI 일정 세부 연출용 정형 구조체
 class ParsedTimelineItem {
   final String time;
   final String title;
@@ -217,7 +216,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         }
       }
     } catch (e) {
-      debugPrint('❌ 과거 채팅 내역 파싱 최종 에러 로그: $e');
+      debugPrint('❌ 과거 채팅 내역 파싱 에러: $e');
     } finally {
       if (mounted) setState(() => _isHistoryLoading = false);
     }
@@ -246,14 +245,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
     try {
       _webSocket = await WebSocket.connect(fullWsPath, headers: wsHeaders);
-      debugPrint('🟢 웹소켓 보안 핸드셰이크 통과 및 실시간 소켓 링크 개통 완료!');
+      debugPrint('🟢 웹소켓 링크 연결 성공');
       
       _wsSubscription = _webSocket?.listen(
         (rawData) => _parseAndAppendMessage(rawData.toString()),
         onError: (err) => debugPrint('웹소켓 에러: $err'),
       );
     } catch (e) {
-      debugPrint('❌ 웹소켓 최종 연결 실패: $e');
+      debugPrint('❌ 웹소켓 연결 실패: $e');
     }
   }
 
@@ -329,7 +328,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         }
       }
     } catch (e) {
-      debugPrint('⚠️ 실시간 소켓 JSON 파싱 실패: $e');
+      debugPrint('⚠️ 소켓 파싱 에러: $e');
     }
   }
 
@@ -453,7 +452,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         }
       }
     } catch (e) {
-      debugPrint('AI 에이전트 SSE 장애: $e');
+      debugPrint('AI 에이전트 장애: $e');
     } finally {
       setState(() {
         _isAiStreaming = false;
@@ -462,7 +461,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
   }
 
-  /// 🎯 [@트립토 퀵 소환 기능]: 입력창 맨 앞에 @트립토 태그 자동 삽입
   void _insertAiTag() {
     const tag = '@트립토 ';
     final currentText = _msgController.text;
@@ -663,7 +661,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           children: [
             Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, size: 22, color: Color(0xFF64748B))),
             const SizedBox(width: 8),
-            // 🤖 [@트립토 퀵 소환 버튼] (반짝이 아이콘 제거)
             GestureDetector(
               onTap: _insertAiTag,
               child: Container(
@@ -724,8 +721,25 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final String rawText = msg['text'] ?? '';
 
     final bool isAi = (senderId == -1);
-    final String userRealName = isAi ? 'tripto' : (_userNamesMap[senderId] ?? '유저 $senderId');
-    final String initialLetter = isAi ? '🤖' : (userRealName.isNotEmpty ? userRealName.substring(0, 1) : '유');
+
+    // 🎯 [나간 유저 (알수없음) 보정]
+    String userRealName = '';
+    if (isAi) {
+      userRealName = 'tripto';
+    } else {
+      String rawNick = _userNamesMap[senderId]?.trim() ?? '';
+      rawNick = rawNick.replaceAll('<', '').replaceAll('>', '').replaceAll('(', '').replaceAll(')', '').trim();
+
+      bool isInvalid = rawNick.isEmpty || 
+                       rawNick.contains('대화상대') || 
+                       rawNick.contains('알수없음') || 
+                       rawNick.contains('알 수 없음') || 
+                       RegExp(r'^유저\d+$').hasMatch(rawNick);
+
+      userRealName = isInvalid ? '(알수없음)' : rawNick;
+    }
+
+    final String initialLetter = isAi ? '🤖' : (userRealName == '(알수없음)' ? '?' : userRealName.substring(0, 1));
 
     bool isOptimizedCard = false;
     bool isAiText = false;
@@ -754,7 +768,15 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           if (!isMe)
             Padding(
               padding: const EdgeInsets.only(left: 48, bottom: 4),
-              child: Text(userRealName, style: TextStyle(color: isAi ? const Color(0xFF524582) : const Color(0xFF64748B), fontSize: 12, fontFamily: 'Pretendard', fontWeight: FontWeight.bold)),
+              child: Text(
+                userRealName, 
+                style: TextStyle(
+                  color: isAi ? const Color(0xFF524582) : (userRealName == '(알수없음)' ? const Color(0xFF94A3B8) : const Color(0xFF64748B)), 
+                  fontSize: 12, 
+                  fontFamily: 'Pretendard', 
+                  fontWeight: FontWeight.bold
+                )
+              ),
             ),
           Row(
             mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -763,10 +785,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               if (!isMe) ...[
                 CircleAvatar(
                   radius: 18, 
-                  backgroundColor: isAi ? const Color(0xFFF5F3FF) : const Color(0x26524582), 
+                  backgroundColor: isAi ? const Color(0xFFF5F3FF) : (userRealName == '(알수없음)' ? const Color(0xFFE2E8F0) : const Color(0x26524582)), 
                   child: isAi 
                     ? const Icon(Icons.auto_awesome, size: 16, color: Color(0xFF524582))
-                    : Text(initialLetter, style: const TextStyle(color: Color(0xFF524582), fontSize: 12, fontWeight: FontWeight.bold)),
+                    : Text(initialLetter, style: TextStyle(color: userRealName == '(알수없음)' ? const Color(0xFF64748B) : const Color(0xFF524582), fontSize: 12, fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(width: 10),
               ],

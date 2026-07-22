@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../../../chat/domain/chat_model.dart';
 
@@ -16,9 +15,10 @@ class ChatListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final int memberCount = chat.derivedMemberCount;
+
     return Dismissible(
-      // 좌→우 슬라이드로 삭제 (이미지 기준 우측 빨간 버튼)
-      key: ValueKey(chat.id),
+      key: ValueKey('dismiss_item_${chat.id}'),
       direction: DismissDirection.endToStart,
       background: Container(
         color: const Color(0xFFD93030),
@@ -27,7 +27,6 @@ class ChatListItem extends StatelessWidget {
         child: const Icon(Icons.delete_outline, color: Colors.white, size: 26),
       ),
       confirmDismiss: (_) async {
-        // 삭제 확인 없이 바로 삭제 (필요하면 confirm dialog 추가)
         return true;
       },
       onDismissed: (_) => onDelete(),
@@ -38,54 +37,71 @@ class ChatListItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Row(
             children: [
-              // 아바타
-              _ChatAvatar(type: chat.type),
+              _ChatCompositeAvatar(room: chat),
               const SizedBox(width: 12),
-
-              // 채팅 정보
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Text(chat.name,
+                        Flexible(
+                          child: Text(
+                            chat.name,
                             style: const TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF2D2A5E)),
-                            overflow: TextOverflow.ellipsis),
-                        if (chat.type == ChatType.group) ...[
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2D2A5E),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (memberCount > 0) ...[
                           const SizedBox(width: 4),
-                          Text('${chat.memberCount}',
-                              style: const TextStyle(fontSize: 12, color: Color(0xFF9993C4))),
+                          Text(
+                            '$memberCount',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF7C5CFC),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ],
                     ),
                     const SizedBox(height: 3),
-                    Text(chat.lastMessage,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF9993C4)),
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      chat.cleanLastMessage,
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF9993C4)),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-
-              // 시간 + 읽지 않은 수
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(chat.lastTime,
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF9993C4))),
+                  Text(
+                    chat.lastTime,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF9993C4)),
+                  ),
                   const SizedBox(height: 5),
                   if (chat.unreadCount > 0)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF6144B0),
+                        color: const Color(0xFFEF4444),
                         borderRadius: BorderRadius.circular(99),
                       ),
-                      child: Text('${chat.unreadCount}',
-                          style: const TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+                      child: Text(
+                        '${chat.unreadCount}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                 ],
               ),
@@ -97,20 +113,101 @@ class ChatListItem extends StatelessWidget {
   }
 }
 
-class _ChatAvatar extends StatelessWidget {
-  final ChatType type;
-  const _ChatAvatar({required this.type});
+class _ChatCompositeAvatar extends StatelessWidget {
+  final ChatModel room;
+
+  const _ChatCompositeAvatar({required this.room});
 
   @override
   Widget build(BuildContext context) {
-    final isAi = type == ChatType.ai;
-    return CircleAvatar(
-      radius: 23,
-      backgroundColor: isAi ? const Color(0xFFE1F5EE) : const Color(0xFFEDE9FF),
-      child: Icon(
-        isAi ? Icons.smart_toy_outlined : Icons.group_outlined,
-        size: 22,
-        color: isAi ? const Color(0xFF0F6E56) : const Color(0xFF6144B0),
+    final profiles = room.humanProfiles;
+
+    if (profiles.isEmpty) {
+      return Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: const Color(0xFF6241D9),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        alignment: Alignment.center,
+        child: const Text(
+          '나',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    }
+
+    final int count = profiles.length;
+
+    Widget singleMiniAvatar(Map<String, String?> profile, double size, {Color? bg}) {
+      final String nick = profile['nickname'] ?? '나';
+      final String? imgUrl = profile['profile_image'];
+      final String initial = nick.isNotEmpty ? nick.substring(0, 1) : '나';
+
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: bg ?? const Color(0xFF6241D9),
+          borderRadius: BorderRadius.circular(size * 0.35),
+        ),
+        clipBehavior: Clip.antiAlias,
+        alignment: Alignment.center,
+        child: (imgUrl != null && imgUrl.isNotEmpty)
+            ? Image.network(
+                imgUrl,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Text(
+                  initial,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: size * 0.45,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            : Text(
+                initial,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: size * 0.45,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+      );
+    }
+
+    if (count == 1) {
+      return singleMiniAvatar(profiles[0], 46, bg: const Color(0xFF6241D9));
+    }
+
+    return SizedBox(
+      width: 46,
+      height: 46,
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          if (count == 2) ...[
+            Positioned(left: 0, top: 0, child: singleMiniAvatar(profiles[0], 25, bg: const Color(0xFF818CF8))),
+            Positioned(right: 0, bottom: 0, child: singleMiniAvatar(profiles[1], 25, bg: const Color(0xFF6366F1))),
+          ] else if (count == 3) ...[
+            Positioned(left: 10, top: 0, child: singleMiniAvatar(profiles[0], 22, bg: const Color(0xFF94A3B8))),
+            Positioned(left: 0, bottom: 0, child: singleMiniAvatar(profiles[1], 22, bg: const Color(0xFF64748B))),
+            Positioned(right: 0, bottom: 0, child: singleMiniAvatar(profiles[2], 22, bg: const Color(0xFF475569))),
+          ] else ...[
+            Positioned(left: 0, top: 0, child: singleMiniAvatar(profiles[0], 21, bg: const Color(0xFF94A3B8))),
+            Positioned(right: 0, top: 0, child: singleMiniAvatar(profiles[1], 21, bg: const Color(0xFF64748B))),
+            Positioned(left: 0, bottom: 0, child: singleMiniAvatar(profiles[2], 21, bg: const Color(0xFF475569))),
+            Positioned(right: 0, bottom: 0, child: singleMiniAvatar(profiles[3], 21, bg: const Color(0xFF334155))),
+          ],
+        ],
       ),
     );
   }
