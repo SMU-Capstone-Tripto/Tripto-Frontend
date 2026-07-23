@@ -69,19 +69,32 @@ class FriendProfileScreen extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Column(
                   children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: bg,
-                      // 닉네임 첫 글자를 아바타에 표시
-                      child: Text(
-                          friend.nickname.isNotEmpty
-                              ? friend.nickname.substring(0, 1)
-                              : '',
-                          style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                              color: text)),
-                    ),
+                    // 💡 여기에 프로필 이미지 분기 처리 추가!
+                    Builder(builder: (context) {
+                      // 모델의 프로필 이미지 변수명(profileImage)에 맞게 수정하세요.
+                      final hasProfileImage = friend.profileImage != null &&
+                          friend.profileImage!.isNotEmpty;
+
+                      return CircleAvatar(
+                        radius: 40,
+                        backgroundColor:
+                            hasProfileImage ? Colors.grey.shade200 : bg,
+                        backgroundImage: hasProfileImage
+                            ? NetworkImage(friend.profileImage!)
+                            : null,
+                        child: hasProfileImage
+                            ? null
+                            : Text(
+                                friend.nickname.isNotEmpty
+                                    ? friend.nickname.substring(0, 1)
+                                    : '',
+                                style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                    color: text),
+                              ),
+                      );
+                    }),
                     const SizedBox(height: 12),
                     Text(friend.nickname,
                         style: const TextStyle(

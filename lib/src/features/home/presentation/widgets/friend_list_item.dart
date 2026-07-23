@@ -107,6 +107,18 @@ class _FriendAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasProfileImage =
+        friend.profileImage != null && friend.profileImage!.isNotEmpty;
+
+    // 💡 2. 프로필 이미지가 등록된 경우: 실제 이미지를 보여줍니다.
+    if (hasProfileImage) {
+      return CircleAvatar(
+        radius: 23,
+        backgroundColor: Colors.grey.shade200, // 이미지 로딩 전 또는 에러 시 임시 배경색
+        backgroundImage: NetworkImage(friend.profileImage!),
+      );
+    }
+
     final (bg, text) = _colors();
     final label =
         friend.nickname.isNotEmpty ? friend.nickname.substring(0, 1) : '';

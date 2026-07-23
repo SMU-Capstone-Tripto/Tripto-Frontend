@@ -9,6 +9,7 @@ class FriendModel {
   final String nickname;
   final String statusMessage;
   final AvatarColor avatarColor;
+  final String profileImage;
 
   const FriendModel({
     required this.friendshipId,
@@ -17,6 +18,7 @@ class FriendModel {
     required this.nickname,
     required this.statusMessage,
     required this.avatarColor,
+    required this.profileImage,
   });
 
   factory FriendModel.fromJson(Map<String, dynamic> json) {
@@ -30,6 +32,7 @@ class FriendModel {
       uniqueId: (data['friend_unique_id'] ?? '').toString(),
       nickname: (data['nickname'] ?? '이름 없음').toString(),
       statusMessage: (data['status_message'] ?? '').toString(),
+      profileImage: (data['profile_image'] ?? '').toString(),
       avatarColor: AvatarColor.purple, // 필요한 경우 data['avatar_color']로 매핑
     );
   }
