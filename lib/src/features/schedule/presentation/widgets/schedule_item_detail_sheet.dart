@@ -1,356 +1,396 @@
 import 'package:flutter/material.dart';
-import '../../domain/schedule_model.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:share_plus/share_plus.dart';
 
-/// 일정 아이템 클릭 시 나오는 바텀시트
-void showScheduleItemDetail(BuildContext context, ScheduleModel item) {
+// 💡 실제 프로젝트의 ScheduleModel 경로로 맞춰주세요.
+import '../../../schedule/domain/travel_model.dart';
+import '../../data/schedule_repository.dart';
+import '../schedule_detail_provider.dart';
+
+// ── ✅ 바텀 시트를 띄워주는 함수 (에러 해결!) ──
+void showScheduleItemDetail(BuildContext context, dynamic item) {
   showModalBottomSheet(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: const Color(0xFFF4F3FF),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (_) => _DetailSheet(item: item),
+    isScrollControlled: true, // 바텀 시트 높이를 자유롭게 조절
+    backgroundColor: Colors.transparent,
+    builder: (context) {
+      return Padding(
+        // 메모 작성 시 키보드가 올라오면 바텀 시트도 위로 밀려올라가도록 설정
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: ScheduleItemDetailSheet(item: item),
+      );
+    },
   );
 }
 
-class _DetailSheet extends StatefulWidget {
-  final ScheduleModel item;
-  const _DetailSheet({required this.item});
+// ── 바텀 시트 UI 본체 ──
+class ScheduleItemDetailSheet extends ConsumerStatefulWidget {
+  final dynamic item; // 모델 타입이 명확하다면 ScheduleModel 등으로 변경하세요.
+
+  const ScheduleItemDetailSheet({super.key, required this.item});
 
   @override
-  State<_DetailSheet> createState() => _DetailSheetState();
+  ConsumerState<ScheduleItemDetailSheet> createState() =>
+      _ScheduleItemDetailSheetState();
 }
 
-class _DetailSheetState extends State<_DetailSheet> {
-  final _memoController = TextEditingController();
-  bool _editingMemo = false;
+class _ScheduleItemDetailSheetState
+    extends ConsumerState<ScheduleItemDetailSheet> {
+  late TextEditingController _memoController;
+  bool _isEditingMemo = false;
 
   @override
   void initState() {
     super.initState();
-    _memoController.text = widget.item.memos ?? '';
+    // 서버에서 받아온 기존 메모(item.memo)가 있다면 해당 텍스트로 초기화하세요.
+    _memoController =
+        TextEditingController(text: widget.item.memo_content ?? '');
+  }
+
+  @override
+  void dispose() {
+    _memoController.dispose();
+    super.dispose();
+  }
+
+  // 장소 공유 기능
+  void _sharePlace() {
+    final placeName = widget.item.place_name ?? '이름 없는 장소';
+    final address = widget.item.place_address ?? '주소 정보 없음';
+
+    final String shareText = '''
+[Tripto 장소 추천]
+📍 장소: $placeName
+🗺️ 주소: $address
+''';
+
+    Share.share(shareText, subject: 'Tripto 장소 공유');
+  }
+
+  // 메모 저장 기능 (API 연동)
+  void _saveMemo() async {
+    final newMemo = _memoController.text;
+
+    // 빈 텍스트 방지
+    if (newMemo.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('메모 내용을 입력해 주세요.')),
+      );
+      return;
+    }
+
+    try {
+      // 프로젝트의 실제 provider 이름으로 맞춰주세요.
+      final repository = ref.read(scheduleRepositoryProvider);
+
+      // ✅ [핵심 해결 포인트] : String이든 int든 무조건 안전하게 int로 변환합니다!
+      final int safeScheduleId = int.parse(widget.item.schedule_id.toString());
+
+      // memo_id는 null일 수도 있으므로 방어 코드를 작성합니다.
+      final int? safeMemoId = widget.item.memo_id != null
+          ? int.parse(widget.item.memo_id.toString())
+          : null;
+
+      if (safeMemoId == null) {
+        // 기존 메모 ID가 없다면 -> POST(생성) 호출
+        await repository.createMemo(safeScheduleId, newMemo);
+      } else {
+        // 기존 메모 ID가 있다면 -> PATCH(수정) 호출
+        await repository.updateMemo(safeMemoId, newMemo);
+      }
+
+      // API 호출 성공 시 UI 상태 변경
+      setState(() {
+        _isEditingMemo = false; // 저장 후 읽기 모드로 전환
+      });
+      ref.invalidate(scheduleProvider);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('메모가 성공적으로 저장되었습니다.'),
+              duration: Duration(seconds: 2)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('저장 오류: $e')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.7,
-      maxChildSize: 0.92,
-      builder: (_, controller) => SingleChildScrollView(
-        controller: controller,
-        child: Column(
-          children: [
-            // 핸들
-            Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
-                borderRadius: BorderRadius.circular(99),
-              ),
-            ),
+    // 네이버 지도 좌표 방어 로직
+    double lat = widget.item.latitude ?? 38.1913;
+    double lng = widget.item.longitude ?? 128.6035;
 
-            // 헤더
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(item.title,
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1E2939))),
-                  IconButton(
-                    icon: const Icon(Icons.share_outlined,
-                        color: Color(0xFF9993C4)),
-                    onPressed: () {/* TODO: 공유 */},
+    if (lat == -90.0 || lng == -180.0) {
+      lat = 38.1913;
+      lng = 128.6035;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF4F3FF),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 드래그 핸들 및 공유 버튼
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const SizedBox(width: 48),
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ],
-              ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.share_outlined,
+                      color: Color(0xFF9993C4)),
+                  onPressed: _sharePlace,
+                ),
+              ],
             ),
+            const SizedBox(height: 12),
 
             // 일정 정보 카드
-            _DetailCard(
-              title: '일정 정보',
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Row(
                 children: [
-                  _TypeIcon(type: item.category),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: const Icon(Icons.explore_outlined,
+                        color: Color(0xFF4CAF50)),
+                  ),
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _TypeBadge(type: item.category),
-                      const SizedBox(height: 4),
-                      Text(item.title,
-                          style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF1E2939))),
-                      Row(children: [
-                        const Icon(Icons.access_time,
-                            size: 12, color: Color(0xFF9993C4)),
-                        const SizedBox(width: 3),
-                        Text(item.start_time,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(widget.item.category?.toString() ?? '일정',
                             style: const TextStyle(
-                                fontSize: 11, color: Color(0xFF9993C4))),
-                      ]),
+                                fontSize: 11,
+                                color: Color(0xFF4CAF50),
+                                fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.access_time,
+                              size: 14, color: Color(0xFF9993C4)),
+                          const SizedBox(width: 4),
+                          Text(widget.item.start_time ?? '',
+                              style: const TextStyle(
+                                  fontSize: 13, color: Color(0xFF9993C4))),
+                        ],
+                      ),
                     ],
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 16),
 
-            // 지도 카드 (장소 있을 때만)
-            if (item.place_address != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: Column(
-                    children: [
-                      // ── Google Maps 미니 지도 ──
-                      // 실제 구현 시 GoogleMap 위젯으로 교체
-                      // GeoCoding API로 address → LatLng 변환 후 마커 표시
-                      Container(
-                        height: 130,
-                        color: const Color(0xFFE8E4F5),
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            // TODO: 실제 Google Maps
-                            // GoogleMap(
-                            //   initialCameraPosition: CameraPosition(target: latLng, zoom: 15),
-                            //   markers: {Marker(markerId: MarkerId('place'), position: latLng)},
-                            //   myLocationButtonEnabled: false,
-                            //   zoomControlsEnabled: false,
-                            // ),
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.location_on,
-                                    color: Color(0xFF6144B0), size: 32),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(8),
-                                    boxShadow: [
-                                      BoxShadow(
-                                          color: Colors.black.withOpacity(0.1),
-                                          blurRadius: 6)
-                                    ],
-                                  ),
-                                  child: Text(item.place_name ?? '',
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF1E2939))),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      // 주소 + 길찾기
-                      Container(
-                        color: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(item.place_name ?? '',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF1E2939))),
-                            Text(item.place_address!,
-                                style: const TextStyle(
-                                    fontSize: 11, color: Color(0xFF9993C4))),
-                            const SizedBox(height: 6),
-                            GestureDetector(
-                              onTap: () {/* TODO: 지도 앱 연동 */},
-                              child: const Row(
-                                children: [
-                                  Icon(Icons.navigation_outlined,
-                                      size: 14, color: Color(0xFF6144B0)),
-                                  SizedBox(width: 4),
-                                  Text('길찾기',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF6144B0))),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+            // 네이버 지도 렌더링 영역
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(
+                height: 160,
+                width: double.infinity,
+                child: NaverMap(
+                  options: NaverMapViewOptions(
+                    initialCameraPosition: NCameraPosition(
+                      target: NLatLng(lat, lng),
+                      zoom: 14,
+                    ),
+                    scrollGesturesEnable: false,
+                    zoomGesturesEnable: false,
                   ),
+                  onMapReady: (controller) {
+                    final marker = NMarker(
+                      id: widget.item.schedule_id.toString(),
+                      position: NLatLng(lat, lng),
+                      caption:
+                          NOverlayCaption(text: widget.item.place_name ?? '장소'),
+                    );
+                    controller.addOverlay(marker);
+                  },
                 ),
               ),
+            ),
+            const SizedBox(height: 16),
 
-            // 메모 카드
-            _DetailCard(
-              title: '메모',
-              child: _editingMemo
-                  ? TextField(
+            // 장소 상세 정보 카드
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.item.place_name ?? '장소 이름',
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E2939))),
+                  const SizedBox(height: 4),
+                  Text(widget.item.place_address ?? '주소 정보가 없습니다.',
+                      style: const TextStyle(
+                          fontSize: 13, color: Color(0xFF9993C4))),
+                  const SizedBox(height: 12),
+                  const Row(
+                    children: [
+                      Icon(Icons.navigation_outlined,
+                          size: 16, color: Color(0xFF6144B0)),
+                      SizedBox(width: 4),
+                      Text('길찾기',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF6144B0))),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 메모 기능 카드
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('메모',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF9993C4))),
+                  const SizedBox(height: 12),
+                  if (_isEditingMemo) ...[
+                    TextField(
                       controller: _memoController,
-                      maxLines: 4,
-                      autofocus: true,
+                      maxLines: 3,
                       decoration: InputDecoration(
-                        hintText: '방문 시 주의사항, 예약 정보 등을 기록하세요',
+                        hintText: '방문 시 주의사항, 예약 정보 등을 기록해보세요.',
                         hintStyle: const TextStyle(
-                            fontSize: 12, color: Color(0xFFC0BBDE)),
+                            color: Color(0xFFC0BBDE), fontSize: 13),
+                        filled: true,
+                        fillColor: const Color(0xFFF4F3FF),
                         border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide:
-                                const BorderSide(color: Color(0xFFEDE9FF))),
-                        focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide:
-                                const BorderSide(color: Color(0xFF6144B0))),
-                        contentPadding: const EdgeInsets.all(10),
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
-                      onSubmitted: (v) => setState(() => _editingMemo = false),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        if (item.memos?.isNotEmpty == true)
-                          Text(item.memos!,
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF6A7282),
-                                  height: 1.6)),
-                        if (item.memos == null || item.memos!.isEmpty)
-                          const Text(
-                              '이곳에서 메모를 추가할 수 있습니다. 방문 시 주의사항, 예약 정보 등을 기록해보세요.',
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _isEditingMemo = false),
+                          child: const Text('취소',
                               style: TextStyle(
-                                  fontSize: 13,
                                   color: Color(0xFF9993C4),
-                                  height: 1.5)),
-                        const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: () => setState(() => _editingMemo = true),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.add,
-                                  size: 14, color: Color(0xFF6144B0)),
-                              Text('메모 추가',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF6144B0))),
-                            ],
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                        ElevatedButton(
+                          onPressed: _saveMemo,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6144B0),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
                           ),
+                          child: const Text('저장',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
+                  ] else ...[
+                    Text(
+                      _memoController.text.isEmpty
+                          ? '이곳에서 메모를 추가할 수 있습니다. 방문 시 주의사항, 예약 정보 등을 기록해보세요.'
+                          : _memoController.text,
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.5,
+                        color: _memoController.text.isEmpty
+                            ? const Color(0xFFC0BBDE)
+                            : const Color(0xFF1E2939),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: () => setState(() => _isEditingMemo = true),
+                      child: Row(
+                        children: [
+                          Icon(
+                              _memoController.text.isEmpty
+                                  ? Icons.add
+                                  : Icons.edit,
+                              size: 16,
+                              color: const Color(0xFF6144B0)),
+                          const SizedBox(width: 4),
+                          Text(_memoController.text.isEmpty ? '메모 추가' : '메모 수정',
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF6144B0))),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 40),
           ],
         ),
       ),
-    );
-  }
-}
-
-// 공통 카드 래퍼
-class _DetailCard extends StatelessWidget {
-  final String title;
-  final Widget child;
-  const _DetailCard({required this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x146144B0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF9993C4),
-                  letterSpacing: .5)),
-          const SizedBox(height: 8),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _TypeIcon extends StatelessWidget {
-  final ScheduleType type;
-  const _TypeIcon({required this.type});
-  @override
-  Widget build(BuildContext context) {
-    final (bg, color, icon) = switch (type) {
-      ScheduleType.move => (
-          const Color(0xFFEDE9FF),
-          const Color(0xFF6144B0),
-          Icons.directions_car_outlined
-        ),
-      ScheduleType.eat => (
-          const Color(0xFFFFF0F0),
-          const Color(0xFFD93030),
-          Icons.restaurant_outlined
-        ),
-      ScheduleType.stay => (
-          const Color(0xFFE6F1FB),
-          const Color(0xFF185FA5),
-          Icons.hotel_outlined
-        ),
-      ScheduleType.activity => (
-          const Color(0xFFE1F5EE),
-          const Color(0xFF0F6E56),
-          Icons.explore_outlined
-        ),
-    };
-    return CircleAvatar(
-        radius: 20,
-        backgroundColor: bg,
-        child: Icon(icon, color: color, size: 20));
-  }
-}
-
-class _TypeBadge extends StatelessWidget {
-  final ScheduleType type;
-  const _TypeBadge({required this.type});
-  @override
-  Widget build(BuildContext context) {
-    final (bg, color) = switch (type) {
-      ScheduleType.move => (const Color(0xFFEDE9FF), const Color(0xFF6144B0)),
-      ScheduleType.eat => (const Color(0xFFFFF0F0), const Color(0xFFD93030)),
-      ScheduleType.stay => (const Color(0xFFE6F1FB), const Color(0xFF185FA5)),
-      ScheduleType.activity => (
-          const Color(0xFFE1F5EE),
-          const Color(0xFF0F6E56)
-        ),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(99)),
-      child: Text(type.label,
-          style: TextStyle(
-              fontSize: 10, fontWeight: FontWeight.w700, color: color)),
     );
   }
 }

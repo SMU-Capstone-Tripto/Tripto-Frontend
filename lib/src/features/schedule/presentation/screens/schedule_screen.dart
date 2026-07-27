@@ -139,7 +139,7 @@ class ScheduleScreen extends ConsumerWidget {
                               ),
                               onDismissed: (_) =>
                                   ref.read(deleteTravelProvider)(
-                                      schedule.travel_id as String),
+                                      schedule.travel_id.toString()),
                               child: TripCardPast(
                                 schedule: schedule,
                                 onTap: () => context.push('/schedule/detail',

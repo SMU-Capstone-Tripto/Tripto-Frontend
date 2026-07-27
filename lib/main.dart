@@ -32,7 +32,7 @@ void main() async {
 
   // 네이버 지도 SDK 초기화
   await NaverMapSdk.instance.initialize(
-    clientId: '여기에_복사한_CLIENT_ID를_넣어주세요',
+    clientId: 'kaseeg2ig0',
     onAuthFailed: (ex) => print('네이버 지도 인증 오류: $ex'),
   );
 

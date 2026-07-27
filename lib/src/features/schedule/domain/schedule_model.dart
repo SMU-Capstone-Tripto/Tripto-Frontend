@@ -12,12 +12,16 @@ extension ScheduleTypeLabel on ScheduleType {
 class ScheduleModel {
   final String schedule_id;
   final String title;
-  final String start_time; // "08:00"
+  final String start_time;
   final ScheduleType category;
-  final String? place_name; // 장소명 (지도 API 검색용)
-  final String? place_address; // 주소
-  final String? memos; // 메모
-  final int day_number; // Day 1 = 1, Day 2 = 2 ...
+  final String? place_name;
+  final String? place_address;
+  final String? memos;
+  final int day_number;
+  final double? latitude;
+  final double? longitude;
+  final int? memo_id;
+  final String? memo_content;
 
   const ScheduleModel({
     required this.schedule_id,
@@ -28,16 +32,21 @@ class ScheduleModel {
     this.place_name,
     this.place_address,
     this.memos,
+    this.latitude,
+    this.longitude,
+    this.memo_id,
+    this.memo_content,
   });
 
-  // 💡 백엔드 API 응답(JSON)을 안전하게 파싱하는 생성자 추가
   factory ScheduleModel.fromJson(Map<String, dynamic> json) {
-    // 카테고리 문자열을 Enum으로 안전하게 매핑 (서버에서 이상한 값이 와도 'activity'로 방어)
     final categoryString = json['category'] as String? ?? 'activity';
     final type = ScheduleType.values.firstWhere(
       (e) => e.name == categoryString,
       orElse: () => ScheduleType.activity,
     );
+
+    // 💡 안전한 파싱: 백엔드가 'memo_id'로 줄 때와 'id'로 줄 때를 모두 커버합니다.
+    final dynamic rawMemoId = json['memo_id'] ?? json['id'];
 
     return ScheduleModel(
       schedule_id: json['schedule_id']?.toString() ?? '',
@@ -48,11 +57,21 @@ class ScheduleModel {
       place_name: json['place_name'] as String?,
       place_address: json['place_address'] as String?,
       memos: json['memos'] as String?,
+      latitude: json['latitude'] as double?,
+      longitude: json['longitude'] as double?,
+      memo_id: rawMemoId != null ? int.parse(rawMemoId.toString()) : null,
+      memo_content:
+          json['memo_content'] as String? ?? json['content'] as String?,
     );
   }
 
-  // 💡 파라미터로 받은 memo가 null이 아닐 때만 업데이트하도록 오타 수정
-  ScheduleModel copyWith({String? memo}) => ScheduleModel(
+  // 💡 핵심 해결 포인트: 상태 업데이트 시 메모 데이터가 증발하지 않도록 파라미터를 추가했습니다.
+  ScheduleModel copyWith({
+    String? memo,
+    int? memo_id,
+    String? memo_content,
+  }) =>
+      ScheduleModel(
         schedule_id: schedule_id,
         title: title,
         start_time: start_time,
@@ -61,5 +80,9 @@ class ScheduleModel {
         place_name: place_name,
         place_address: place_address,
         memos: memo ?? memos,
+        latitude: latitude,
+        longitude: longitude,
+        memo_id: memo_id ?? this.memo_id,
+        memo_content: memo_content ?? this.memo_content,
       );
 }

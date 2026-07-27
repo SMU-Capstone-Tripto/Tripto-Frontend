@@ -71,3 +71,10 @@ final dayItemsProvider = Provider<List<ScheduleModel>>((ref) {
   return items.where((i) => i.day_number == day).toList()
     ..sort((a, b) => a.start_time.compareTo(b.start_time));
 });
+
+// 지도 핀(마커) 목록 조회 Provider
+final mapPinsProvider =
+    FutureProvider.family<List<ScheduleModel>, String>((ref, travelId) async {
+  final repository = ref.watch(scheduleRepositoryProvider);
+  return repository.getTravelMapPins(travelId);
+});

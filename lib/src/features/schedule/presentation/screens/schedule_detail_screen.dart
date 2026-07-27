@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart'; // 네이버 지도 패키지
+import 'package:share_plus/share_plus.dart'; // 공유 패키지
+
 import '../../presentation/schedule_detail_provider.dart';
 import '../../presentation/widgets/timeline_item_card.dart';
 import '../../presentation/widgets/schedule_item_detail_sheet.dart';
@@ -7,13 +10,12 @@ import '../../../schedule/domain/travel_model.dart';
 
 class ScheduleDetailScreen extends ConsumerStatefulWidget {
   final TravelModel schedule;
-  // 💡 1. 친구 피드에서 넘어온 것인지 확인하는 플래그 추가 (기본값은 false)
   final bool isFriendFeed;
 
   const ScheduleDetailScreen({
     super.key,
     required this.schedule,
-    this.isFriendFeed = false, // 기본적으로 내 일정으로 간주
+    this.isFriendFeed = false,
   });
 
   @override
@@ -31,15 +33,23 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final travelId = widget.schedule.travel_id.toString();
 
-      // 💡 2. 내 일정인지 친구 일정인지에 따라 다른 API 로직 호출
       if (widget.isFriendFeed) {
-        // 백엔드 명세의 GET /api/v1/feed/{travel_id} 를 호출하는 함수 실행
         ref.read(scheduleProvider.notifier).fetchFriendSchedules(travelId);
       } else {
-        // 기존 내 일정 호출 로직
         ref.read(scheduleProvider.notifier).fetchSchedules(travelId);
       }
     });
+  }
+
+  // ── 공유 버튼 동작 함수 ──
+  void _shareTravel() {
+    final title = widget.schedule.title;
+    final travelId = widget.schedule.travel_id;
+
+    final String shareLink = 'https://tripto.app/travel/$travelId';
+
+    // 링크와 함께 보낼 메시지 구성
+    Share.share('[$title] 여행 일정을 확인해보세요!\n👉 링크: $shareLink');
   }
 
   @override
@@ -47,7 +57,6 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
     final selectedDay = ref.watch(selectedDayProvider);
     final dayItems = ref.watch(dayItemsProvider);
 
-    // 여행 총 일수
     final totalDays =
         widget.schedule.end_date.difference(widget.schedule.start_date).inDays +
             1;
@@ -64,18 +73,28 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 뒤로가기
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.arrow_back_ios,
-                          size: 14, color: Color(0xFF9993C4)),
-                      Text('목록으로',
-                          style: TextStyle(
-                              fontSize: 13, color: Color(0xFF9993C4))),
-                    ],
-                  ),
+                // 뒤로가기 & ✅ 공유 버튼 추가
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.arrow_back_ios,
+                              size: 14, color: Color(0xFF9993C4)),
+                          Text('목록으로',
+                              style: TextStyle(
+                                  fontSize: 13, color: Color(0xFF9993C4))),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _shareTravel,
+                      child: const Icon(Icons.share_outlined,
+                          size: 20, color: Color(0xFF9993C4)),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(widget.schedule.title,
@@ -109,9 +128,8 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
             ),
           ),
 
-          // ── 일정 뷰 ──
+          // ── 일정 뷰 (기존과 동일) ──
           if (!_isMapView) ...[
-            // Day 선택 바
             Container(
               color: Colors.white,
               child: SizedBox(
@@ -167,8 +185,6 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
                 ),
               ),
             ),
-
-            // 타임라인 리스트
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
@@ -196,7 +212,7 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
   }
 }
 
-// 지도 뷰 (Google Maps)
+// 네이버 지도 뷰
 class _MapView extends ConsumerWidget {
   final TravelModel schedule;
   final int totalDays;
@@ -204,8 +220,15 @@ class _MapView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final travelIdStr = schedule.travel_id.toString();
+    final mapPinsAsync = ref.watch(mapPinsProvider(travelIdStr));
     final selectedDay = ref.watch(selectedDayProvider);
     final dayItems = ref.watch(dayItemsProvider);
+
+    // 지도를 처음에 띄울 중심 좌표 (예: 태종대 위경도)
+    // 실제 서비스에서는 dayItems.first 의 위도/경도를 사용하도록 연결해야 합니다.
+    const double initialLat = 35.0531;
+    const double initialLng = 129.0874;
 
     return Column(
       children: [
@@ -244,35 +267,49 @@ class _MapView extends ConsumerWidget {
           ),
         ),
 
-        // Google Maps (실제 구현)
+        // ✅ Naver Maps 실제 구현부
         Expanded(
-          child: Container(
-            // TODO: GoogleMap 위젯으로 교체
-            // GoogleMap(
-            //   initialCameraPosition: ...,
-            //   polylines: { /* 장소 연결선 */ },
-            //   markers: { /* 각 일정 마커 */ },
-            // ),
-            color: const Color(0xFFE8E4F5),
-            child: const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.map, size: 40, color: Color(0xFF9993C4)),
-                  SizedBox(height: 8),
-                  Text('Google Maps API',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF6144B0))),
-                  Text('실제 앱에서 지도가 표시됩니다',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF9993C4))),
-                ],
-              ),
-            ),
+          child: mapPinsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, stack) =>
+                Center(child: Text('지도 데이터를 불러오지 못했습니다: $err')),
+            data: (pins) {
+              // 핀이 하나도 없을 경우 제주도를 기본 중심 좌표로 설정
+              double centerLat = 33.4996;
+              double centerLng = 126.5312;
+
+              if (pins.isNotEmpty) {
+                // 데이터가 있다면 첫 번째 장소를 지도의 중심으로 잡습니다.
+                centerLat = pins.first.latitude ?? 33.4996;
+                centerLng = pins.first.longitude ?? 126.5312;
+              }
+
+              return NaverMap(
+                options: NaverMapViewOptions(
+                  initialCameraPosition: NCameraPosition(
+                    target: NLatLng(centerLat, centerLng),
+                    zoom: 11,
+                  ),
+                ),
+                onMapReady: (controller) {
+                  for (var pin in pins) {
+                    // ✅ 위도와 경도가 null이 아닐 때만 마커를 찍도록 방어 코드 추가
+                    if (pin.latitude != null && pin.longitude != null) {
+                      final marker = NMarker(
+                        id: pin.schedule_id.toString(),
+                        position: NLatLng(pin.latitude!, pin.longitude!),
+                        caption: NOverlayCaption(text: pin.place_name ?? '장소'),
+                      );
+                      controller.addOverlay(marker);
+                    }
+                  }
+                },
+              );
+            },
           ),
         ),
 
-        // 하단 장소 카드
+        // 하단 장소 카드 (선택된 Day의 첫 번째 장소 정보를 띄움)
         if (dayItems.isNotEmpty)
           Container(
             margin: const EdgeInsets.all(16),
