@@ -99,7 +99,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
     );
   }
 
-  /// 🎯 [통합 아바타: 2인 방 2개 아바타 스택 정상 표시]
+  /// 🎯 [통합 아바타: 정확한 실질 멤버 수 기반 아바타 스택 생성]
   Widget _buildListCompositeAvatar(ChatModel room) {
     final myProfile = ref.watch(profileProvider).value;
     final String? myProfileImg = myProfile?.profileImage;
@@ -126,32 +126,18 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
       if (url == null || url.trim().isEmpty) return null;
       String trimmed = url.trim();
 
-      String cleanBase = AuthStorage.baseUrl.replaceAll('\n', '').replaceAll('\r', '').trim();
-      
-      while (cleanBase.endsWith('/')) {
-        cleanBase = cleanBase.substring(0, cleanBase.length - 1);
-      }
-      if (cleanBase.endsWith('/api/v1')) {
-        cleanBase = cleanBase.substring(0, cleanBase.length - 7);
-      } else if (cleanBase.endsWith('/api')) {
-        cleanBase = cleanBase.substring(0, cleanBase.length - 4);
-      }
-      while (cleanBase.endsWith('/')) {
-        cleanBase = cleanBase.substring(0, cleanBase.length - 1);
-      }
-
-      if (trimmed.contains('localhost:') || trimmed.contains('127.0.0.1:')) {
-        final uri = Uri.tryParse(trimmed);
-        if (uri != null && uri.path.isNotEmpty) {
-          trimmed = uri.path;
-        }
-      }
-
       if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
         return trimmed;
       }
 
-      return trimmed.startsWith('/') ? '$cleanBase$trimmed' : '$cleanBase/$trimmed';
+      try {
+        final baseUri = Uri.parse(AuthStorage.baseUrl);
+        final origin = '${baseUri.scheme}://${baseUri.host}${baseUri.hasPort ? ':${baseUri.port}' : ''}';
+        final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+        return '$origin$path';
+      } catch (_) {
+        return trimmed;
+      }
     }
 
     Widget singleMiniAvatar(Map<String, dynamic> profile, double size, {Color? bg}) {
@@ -205,12 +191,10 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
 
     final int count = profiles.length;
 
-    // 1명(나 혼자 방)일 때만 단독 48px
     if (count == 1) {
       return singleMiniAvatar(profiles[0], 48, bg: const Color(0xFF6241D9));
     }
 
-    // 2명 이상인 경우 다중 아바타 스택 (2명 방은 2개의 미니 아바타 표시)
     return SizedBox(
       width: 48,
       height: 48,

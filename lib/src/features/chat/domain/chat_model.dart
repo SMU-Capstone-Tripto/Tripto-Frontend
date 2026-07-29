@@ -103,8 +103,9 @@ class ChatModel {
       }
     }
 
-    // 3. 유저 ID 기준 백엔드 전체 유저 프로필 수집
+    // 3. 방의 실질 참여자 수집
     final Map<int, Map<String, dynamic>> userStore = {};
+    final Set<int> explicitMemberIds = {};
 
     Map<String, dynamic> getOrInitUser(int uid) {
       return userStore.putIfAbsent(uid, () => {
@@ -121,13 +122,11 @@ class ChatModel {
       }
     }
 
-    final List<int> memberIdsOnly = [];
-
     for (var item in rawMemberList) {
       if (item is Map) {
         final int? uid = int.tryParse(item['id']?.toString() ?? item['user_id']?.toString() ?? item['friend_id']?.toString() ?? '');
-        if (uid != null) {
-          if (!memberIdsOnly.contains(uid)) memberIdsOnly.add(uid);
+        if (uid != null && uid > 0) {
+          explicitMemberIds.add(uid);
           var u = getOrInitUser(uid);
           String? nick = item['nickname']?.toString() ?? item['name']?.toString() ?? item['username']?.toString();
           String? img = item['profile_image']?.toString() ?? item['profile_img']?.toString() ?? item['profile_image_url']?.toString() ?? item['image']?.toString() ?? item['user_image']?.toString() ?? item['avatar']?.toString();
@@ -136,8 +135,8 @@ class ChatModel {
         }
       } else if (item != null) {
         final int? uid = int.tryParse(item.toString());
-        if (uid != null) {
-          if (!memberIdsOnly.contains(uid)) memberIdsOnly.add(uid);
+        if (uid != null && uid > 0) {
+          explicitMemberIds.add(uid);
           getOrInitUser(uid);
         }
       }
@@ -147,8 +146,8 @@ class ChatModel {
       if (json[key] is Map) {
         final Map<String, dynamic> item = json[key];
         final int? uid = int.tryParse(item['id']?.toString() ?? item['user_id']?.toString() ?? '');
-        if (uid != null) {
-          if (!memberIdsOnly.contains(uid)) memberIdsOnly.add(uid);
+        if (uid != null && uid > 0) {
+          explicitMemberIds.add(uid);
           var u = getOrInitUser(uid);
           String? nick = item['nickname']?.toString() ?? item['name']?.toString() ?? item['username']?.toString();
           String? img = item['profile_image']?.toString() ?? item['profile_img']?.toString() ?? item['profile_image_url']?.toString() ?? item['image']?.toString() ?? item['avatar']?.toString();
@@ -158,55 +157,70 @@ class ChatModel {
       }
     }
 
+    // 🎯 [핵심]: 명시적 멤버 리스트가 이미 존재하는 경우 user_names/user_images로 무분별하게 멤버를 추가하지 않음!
     if (json['user_names'] is Map) {
       (json['user_names'] as Map).forEach((k, v) {
         final int? uid = int.tryParse(k.toString());
-        if (uid != null) {
-          var u = getOrInitUser(uid);
-          if (v is Map) {
-            String? nick = v['nickname']?.toString() ?? v['name']?.toString();
-            String? img = v['profile_image']?.toString() ?? v['profile_img']?.toString() ?? v['profile_image_url']?.toString() ?? v['image']?.toString();
-            if (nick != null && nick.trim().isNotEmpty) u['nickname'] = nick.trim();
-            if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
-          } else if (v != null && v.toString().trim().isNotEmpty) {
-            u['nickname'] = v.toString().trim();
+        if (uid != null && uid > 0) {
+          if (explicitMemberIds.isEmpty || explicitMemberIds.contains(uid)) {
+            var u = getOrInitUser(uid);
+            if (v is Map) {
+              String? nick = v['nickname']?.toString() ?? v['name']?.toString();
+              String? img = v['profile_image']?.toString() ?? v['profile_img']?.toString() ?? v['profile_image_url']?.toString() ?? v['image']?.toString();
+              if (nick != null && nick.trim().isNotEmpty) u['nickname'] = nick.trim();
+              if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
+            } else if (v != null && v.toString().trim().isNotEmpty) {
+              u['nickname'] = v.toString().trim();
+            }
           }
         }
       });
     }
 
-    for (var key in ['user_images', 'profile_images', 'user_profile_images', 'images', 'avatars']) {
-      if (json[key] is Map) {
-        (json[key] as Map).forEach((k, v) {
-          final int? uid = int.tryParse(k.toString());
-          if (uid != null && v != null) {
+    if (json['user_images'] is Map) {
+      (json['user_images'] as Map).forEach((k, v) {
+        final int? uid = int.tryParse(k.toString());
+        if (uid != null && uid > 0) {
+          if (explicitMemberIds.isEmpty || explicitMemberIds.contains(uid)) {
             var u = getOrInitUser(uid);
             if (v is Map) {
               String? img = v['profile_image']?.toString() ?? v['profile_img']?.toString() ?? v['profile_image_url']?.toString() ?? v['image']?.toString();
               if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
-            } else if (v.toString().trim().isNotEmpty) {
+            } else if (v != null && v.toString().trim().isNotEmpty) {
               u['profile_image'] = v.toString().trim();
             }
           }
-        });
-      }
+        }
+      });
     }
 
-    for (var imgKey in ['partner_profile_image', 'opponent_profile_image', 'target_profile_image', 'profile_image', 'image']) {
-      if (json[imgKey] != null && json[imgKey].toString().trim().isNotEmpty) {
-        final String directImg = json[imgKey].toString().trim();
-        for (var uid in userStore.keys) {
-          if (uid != -1 && (myUserId == 0 || uid != myUserId)) {
-            if (userStore[uid]!['profile_image'] == null) {
-              userStore[uid]!['profile_image'] = directImg;
-            }
+    // 🎯 [핵심]: 이미 생성된 진짜 방 멤버의 프로필 사진이 비어있을 때만 친구 프로필 캐시에서 S3 주소를 가져옴
+    if (json['friend_images'] is Map) {
+      (json['friend_images'] as Map).forEach((k, v) {
+        final int? uid = int.tryParse(k.toString());
+        if (uid != null && userStore.containsKey(uid) && v != null) {
+          final String img = v.toString().trim();
+          if (img.isNotEmpty && (userStore[uid]!['profile_image'] == null || userStore[uid]!['profile_image'].toString().isEmpty)) {
+            userStore[uid]!['profile_image'] = img;
           }
         }
-      }
+      });
+    }
+
+    if (json['friend_names'] is Map) {
+      (json['friend_names'] as Map).forEach((k, v) {
+        final int? uid = int.tryParse(k.toString());
+        if (uid != null && userStore.containsKey(uid) && v != null) {
+          final String nick = v.toString().trim();
+          if (nick.isNotEmpty && (userStore[uid]!['nickname'] == null || userStore[uid]!['nickname'].toString().isEmpty)) {
+            userStore[uid]!['nickname'] = nick;
+          }
+        }
+      });
     }
 
     final bool isAiRoom = json['type'] == 'ai' || 
-                         memberIdsOnly.contains(-1) || 
+                         explicitMemberIds.contains(-1) || 
                          userStore.containsKey(-1) ||
                          roomName.toLowerCase().contains('tripto') || 
                          roomName.contains('트립토');
@@ -247,15 +261,6 @@ class ChatModel {
       });
     });
 
-    // 🎯 1:1 대화방일 때 내 프로필을 뒤로 정렬
-    if (myUserId > 0 && humanProfiles.length == 2) {
-      humanProfiles.sort((a, b) {
-        if (a['id'] == myUserId.toString()) return 1;
-        if (b['id'] == myUserId.toString()) return -1;
-        return 0;
-      });
-    }
-
     roomName = roomName.replaceAll('<', '').replaceAll('>', '').trim();
     if (roomName.isEmpty || roomName.contains('대화상대') || roomName.contains('알수없음') || RegExp(r'^유저\d+$').hasMatch(roomName)) {
       if (activeHumanNicknames.isNotEmpty) {
@@ -276,7 +281,7 @@ class ChatModel {
       lastTime: formattedTime,
       unreadCount: int.tryParse(json['unread_count']?.toString() ?? '0') ?? 0,
       type: isAiRoom ? ChatType.ai : ChatType.user,
-      memberIds: memberIdsOnly.isNotEmpty ? memberIdsOnly : userStore.keys.toList(),
+      memberIds: explicitMemberIds.isNotEmpty ? explicitMemberIds.toList() : userStore.keys.toList(),
       userNames: cleanedUserNames,
       humanProfiles: humanProfiles,
       derivedMemberCount: humanCount,

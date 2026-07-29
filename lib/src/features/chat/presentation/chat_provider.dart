@@ -23,6 +23,10 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
 
     try {
       int myUserId = 0;
+      final Map<String, String> friendNames = {};
+      final Map<String, String> friendImages = {};
+
+      // 1. 내 프로필 정보 조율 (/auth/me)
       try {
         final meRes = await http.get(
           Uri.parse('${AuthStorage.baseUrl}/auth/me'),
@@ -30,10 +34,40 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
         );
         if (meRes.statusCode == 200) {
           final meData = jsonDecode(utf8.decode(meRes.bodyBytes));
-          myUserId = int.tryParse(meData['id']?.toString() ?? meData['user_id']?.toString() ?? '0') ?? 0;
+          myUserId = int.tryParse(meData['user_id']?.toString() ?? meData['id']?.toString() ?? '0') ?? 0;
+          final String? myImg = meData['profile_image']?.toString();
+          final String? myNick = meData['nickname']?.toString();
+          if (myUserId > 0) {
+            if (myNick != null && myNick.isNotEmpty) friendNames[myUserId.toString()] = myNick;
+            if (myImg != null && myImg.isNotEmpty) friendImages[myUserId.toString()] = myImg;
+          }
         }
       } catch (_) {}
 
+      // 2. 친구 목록 조회 (/friends/list) -> 백그라운드 참조용 프로필 캐시 생성
+      try {
+        final friendRes = await http.get(
+          Uri.parse('${AuthStorage.baseUrl}/friends/list'),
+          headers: AuthStorage.authHeaders,
+        );
+        if (friendRes.statusCode == 200) {
+          final List<dynamic> friendList = jsonDecode(utf8.decode(friendRes.bodyBytes));
+          for (var item in friendList) {
+            if (item is Map && item['user'] is Map) {
+              final u = item['user'];
+              final String? fId = u['friend_id']?.toString() ?? u['id']?.toString();
+              final String? fNick = u['nickname']?.toString();
+              final String? fImg = u['profile_image']?.toString() ?? u['profile_img']?.toString();
+              if (fId != null && fId.isNotEmpty) {
+                if (fNick != null && fNick.isNotEmpty) friendNames[fId] = fNick;
+                if (fImg != null && fImg.isNotEmpty) friendImages[fId] = fImg;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 3. 채팅방 목록 조회 (/chat/rooms)
       final url = Uri.parse('${AuthStorage.baseUrl}/chat/rooms');
       final response = await http.get(url, headers: AuthStorage.authHeaders);
 
@@ -44,6 +78,36 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
             final Map<String, dynamic> roomJson = Map<String, dynamic>.from(e);
             final int roomId = int.tryParse(roomJson['room_id']?.toString() ?? roomJson['id']?.toString() ?? '0') ?? 0;
 
+            final Map<String, dynamic> roomUserNames = {};
+            final Map<String, dynamic> roomUserImages = {};
+
+            void recordUser(dynamic uid, dynamic nick, String? img) {
+              if (uid == null) return;
+              final String sUid = uid.toString().trim();
+              if (sUid.isEmpty || sUid == '0' || sUid == '-1') return;
+              if (nick != null && nick.toString().trim().isNotEmpty) {
+                roomUserNames[sUid] = nick.toString().trim();
+              }
+              if (img != null && img.trim().isNotEmpty) {
+                roomUserImages[sUid] = img.trim();
+              }
+            }
+
+            for (var key in ['members', 'user_profiles', 'profiles', 'users', 'participants']) {
+              if (roomJson[key] is List) {
+                for (var m in (roomJson[key] as List)) {
+                  if (m is Map) {
+                    recordUser(
+                      m['id'] ?? m['user_id'], 
+                      m['nickname'] ?? m['name'], 
+                      m['profile_image']?.toString() ?? m['profile_img']?.toString()
+                    );
+                  }
+                }
+              }
+            }
+
+            // 4. 상세 메시지 조회 (/chat/$roomId/messages)
             if (roomId > 0) {
               try {
                 final msgRes = await http.get(
@@ -55,47 +119,21 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
                   if (msgData is Map) {
                     final List<dynamic> messages = msgData['messages'] ?? [];
                     final Map<String, dynamic> readStatuses = Map<String, dynamic>.from(msgData['read_statuses'] ?? {});
-                    final Map<String, dynamic> userNames = Map<String, dynamic>.from(msgData['user_names'] ?? {});
-                    final Map<String, dynamic> userImages = Map<String, dynamic>.from(msgData['user_images'] ?? msgData['profile_images'] ?? {});
 
-                    // 🎯 [핵심 보완]: 메시지 배열 내 모든 Key(sender_profile_image, avatar, profile_img 등) 대응 수집
+                    if (msgData['user_names'] is Map) {
+                      (msgData['user_names'] as Map).forEach((k, v) => recordUser(k, v, null));
+                    }
+                    if (msgData['user_images'] is Map) {
+                      (msgData['user_images'] as Map).forEach((k, v) => recordUser(k, null, v?.toString()));
+                    }
+
                     for (var m in messages) {
                       if (m is Map) {
-                        final String? senderId = m['sender_id']?.toString() ?? m['user_id']?.toString();
-                        final String? senderImg = m['sender_profile_image']?.toString() ?? 
-                                                 m['sender_profile_img']?.toString() ?? 
-                                                 m['profile_image']?.toString() ?? 
-                                                 m['profile_img']?.toString() ?? 
-                                                 m['profile_image_url']?.toString() ??
-                                                 m['avatar']?.toString();
-                        final String? senderNick = m['sender_nickname']?.toString() ?? 
-                                                  m['nickname']?.toString() ?? 
-                                                  m['name']?.toString();
-
-                        if (senderId != null && senderId != '0' && senderId != '-1') {
-                          if (senderImg != null && senderImg.trim().isNotEmpty) {
-                            userImages[senderId] = senderImg.trim();
-                          }
-                          if (senderNick != null && senderNick.trim().isNotEmpty) {
-                            userNames[senderId] = senderNick.trim();
-                          }
-                        }
-                      }
-                    }
-
-                    roomJson['user_names'] = userNames;
-                    roomJson['user_images'] = userImages;
-                    if (msgData['member_ids'] != null) {
-                      roomJson['member_ids'] = msgData['member_ids'];
-                    }
-
-                    for (var key in [
-                      'profile_images', 'user_profile_images', 'images', 
-                      'avatars', 'user_profiles', 'profiles', 'members',
-                      'opponent', 'partner', 'target_user'
-                    ]) {
-                      if (msgData[key] != null) {
-                        roomJson[key] = msgData[key];
+                        recordUser(
+                          m['sender_id'] ?? m['user_id'], 
+                          m['sender_nickname'] ?? m['nickname'], 
+                          m['sender_profile_image']?.toString() ?? m['profile_image']?.toString()
+                        );
                       }
                     }
 
@@ -119,6 +157,13 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
                 }
               } catch (_) {}
             }
+
+            roomJson['user_names'] = roomUserNames;
+            roomJson['user_images'] = roomUserImages;
+            // 🎯 [핵심]: 친구 목록 정보는 방 멤버 강제추가용이 아닌 '프로필 이미지 보완 참조용'으로 따로 전달
+            roomJson['friend_images'] = friendImages;
+            roomJson['friend_names'] = friendNames;
+
             return ChatModel.fromJson(roomJson, myUserId: myUserId);
           });
 
