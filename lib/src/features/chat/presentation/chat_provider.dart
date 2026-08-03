@@ -17,6 +17,30 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
   ChatNotifier() : super([]);
   bool _isLoading = false;
 
+  /// 🎯 [낙관적 업데이트]: 네트워크 기다릴 필요 없이 화면 상태를 즉시 변경
+  void updateRoomName(int roomId, String newName) {
+    state = [
+      for (final room in state)
+        if ((int.tryParse(room.id.toString()) ?? 0) == roomId)
+          ChatModel(
+            id: room.id,
+            name: newName,
+            rawLastMessage: room.rawLastMessage,
+            cleanLastMessage: room.cleanLastMessage,
+            lastTime: room.lastTime,
+            unreadCount: room.unreadCount,
+            type: room.type,
+            memberIds: room.memberIds,
+            userNames: room.userNames,
+            humanProfiles: room.humanProfiles,
+            derivedMemberCount: room.derivedMemberCount,
+            updatedAt: room.updatedAt,
+          )
+        else
+          room,
+    ];
+  }
+
   Future<void> fetchRooms() async {
     if (_isLoading) return;
     _isLoading = true;
@@ -26,7 +50,6 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
       final Map<String, String> friendNames = {};
       final Map<String, String> friendImages = {};
 
-      // 1. 내 프로필 정보 조율 (/auth/me)
       try {
         final meRes = await http.get(
           Uri.parse('${AuthStorage.baseUrl}/auth/me'),
@@ -44,7 +67,6 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
         }
       } catch (_) {}
 
-      // 2. 친구 목록 조회 (/friends/list) -> 백그라운드 참조용 프로필 캐시 생성
       try {
         final friendRes = await http.get(
           Uri.parse('${AuthStorage.baseUrl}/friends/list'),
@@ -67,7 +89,6 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
         }
       } catch (_) {}
 
-      // 3. 채팅방 목록 조회 (/chat/rooms)
       final url = Uri.parse('${AuthStorage.baseUrl}/chat/rooms');
       final response = await http.get(url, headers: AuthStorage.authHeaders);
 
@@ -107,7 +128,6 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
               }
             }
 
-            // 4. 상세 메시지 조회 (/chat/$roomId/messages)
             if (roomId > 0) {
               try {
                 final msgRes = await http.get(
@@ -160,7 +180,6 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
 
             roomJson['user_names'] = roomUserNames;
             roomJson['user_images'] = roomUserImages;
-            // 🎯 [핵심]: 친구 목록 정보는 방 멤버 강제추가용이 아닌 '프로필 이미지 보완 참조용'으로 따로 전달
             roomJson['friend_images'] = friendImages;
             roomJson['friend_names'] = friendNames;
 

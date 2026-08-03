@@ -21,6 +21,10 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
+  final Set<int> _pinnedRoomIds = {};
+  final Set<int> _mutedRoomIds = {};
+  Offset _tapPosition = Offset.zero;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -41,6 +45,42 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
       ref.read(chatProvider.notifier).fetchRooms();
     } catch (e) {
       debugPrint('❌ 슬라이드 퇴장 통신 에러: $e');
+    }
+  }
+
+  /// 🎯 [완벽한 실시간 업데이트]: 낙관적 UI 업데이트 + 백엔드 호환 전송
+  Future<void> _updateRoomTitleOnServer(int roomId, String newName) async {
+    // 1. 프론트엔드 상태 0.001초 즉시 변경 (사용자에게 즉시 반영됨)
+    ref.read(chatProvider.notifier).updateRoomName(roomId, newName);
+
+    // 2. 백엔드 통신 (Query Param + Body 둘 다 파라미터 전달)
+    try {
+      final cleanBase = AuthStorage.baseUrl.trim().replaceAll('\n', '').replaceAll('\r', '');
+      final uri = Uri.parse('$cleanBase/chat/$roomId/name').replace(
+        queryParameters: {'room_name': newName, 'name': newName},
+      );
+      
+      final headers = {
+        ...AuthStorage.authHeaders,
+        'Content-Type': 'application/json; charset=utf-8',
+      };
+
+      final response = await http.put(
+        uri, 
+        headers: headers,
+        body: jsonEncode({'room_name': newName, 'name': newName}),
+      );
+
+      debugPrint('📝 [방 이름 변경 백엔드 응답]: ${response.statusCode}');
+
+      if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 204) {
+        // 서버 변경 성공 시 최신 상태 완벽 동기화
+        await ref.read(chatProvider.notifier).fetchRooms();
+      } else {
+        debugPrint('❌ 방 이름 백엔드 서버 변경 오류: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('❌ 방 이름 백엔드 동기화 예외 에러: $e');
     }
   }
 
@@ -99,7 +139,160 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
     );
   }
 
-  /// 🎯 [통합 아바타: 정확한 실질 멤버 수 기반 아바타 스택 생성]
+  void _showEditRoomNameDialog(ChatModel room, int roomId) {
+    final TextEditingController nameEditController = TextEditingController(text: room.name);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('채팅방 이름 설정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+        content: TextField(
+          controller: nameEditController,
+          autofocus: true,
+          style: const TextStyle(fontFamily: 'Pretendard', fontSize: 14),
+          decoration: const InputDecoration(
+            hintText: '변경할 방 이름을 입력하세요',
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFE2E8F0))),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF6241D9))),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소', style: TextStyle(color: Colors.grey, fontFamily: 'Pretendard')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6241D9), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            onPressed: () {
+              final typedName = nameEditController.text.trim();
+              Navigator.pop(context);
+              if (typedName.isNotEmpty) {
+                _updateRoomTitleOnServer(roomId, typedName);
+              }
+            },
+            child: const Text('변경', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _showKakaoContextMenu(ChatModel room, int roomId, Offset tapPosition) async {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromLTWH(tapPosition.dx, tapPosition.dy, 0, 0),
+      Offset.zero & overlay.size,
+    );
+
+    final bool isPinned = _pinnedRoomIds.contains(roomId);
+    final bool isMuted = _mutedRoomIds.contains(roomId);
+
+    final String? selectedValue = await showMenu<String>(
+      context: context,
+      position: position,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: Colors.white,
+      elevation: 8,
+      items: [
+        const PopupMenuItem<String>(
+          value: 'open',
+          height: 38,
+          child: Text('채팅방 열기', style: TextStyle(fontSize: 13.5, fontFamily: 'Pretendard', color: Color(0xFF1E2939))),
+        ),
+        const PopupMenuItem<String>(
+          value: 'rename',
+          height: 38,
+          child: Text('채팅방 이름 설정', style: TextStyle(fontSize: 13.5, fontFamily: 'Pretendard', color: Color(0xFF1E2939))),
+        ),
+        PopupMenuItem<String>(
+          value: 'pin',
+          height: 38,
+          child: Text(
+            isPinned ? '채팅방 상단 고정 해제' : '채팅방 상단 고정',
+            style: const TextStyle(fontSize: 13.5, fontFamily: 'Pretendard', color: Color(0xFF1E2939)),
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'mute',
+          height: 38,
+          child: Text(
+            isMuted ? '알림 켜기' : '알림 끄기',
+            style: const TextStyle(fontSize: 13.5, fontFamily: 'Pretendard', color: Color(0xFF1E2939)),
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'leave',
+          height: 38,
+          child: Text(
+            '채팅방 나가기',
+            style: TextStyle(fontSize: 13.5, fontFamily: 'Pretendard', color: Color(0xFFFF4D4D), fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+
+    if (selectedValue == 'open') {
+      _navigateToRoom(room, roomId);
+    } else if (selectedValue == 'rename') {
+      _showEditRoomNameDialog(room, roomId);
+    } else if (selectedValue == 'pin') {
+      setState(() {
+        if (isPinned) {
+          _pinnedRoomIds.remove(roomId);
+        } else {
+          _pinnedRoomIds.add(roomId);
+        }
+      });
+    } else if (selectedValue == 'mute') {
+      setState(() {
+        if (isMuted) {
+          _mutedRoomIds.remove(roomId);
+        } else {
+          _mutedRoomIds.add(roomId);
+        }
+      });
+    } else if (selectedValue == 'leave') {
+      final bool? confirm = await _showLeaveConfirmDialog(room.name);
+      if (confirm == true && roomId > 0) {
+        _leaveRoomSilently(roomId);
+      }
+    }
+  }
+
+  void _navigateToRoom(ChatModel room, int parsedRoomId) {
+    bool isBot = room.type == ChatType.ai;
+
+    final Map<int, String> roomMemberNames = {};
+    final Map<int, String?> roomMemberImages = {};
+
+    for (var p in room.humanProfiles) {
+      final int? uId = int.tryParse(p['id']?.toString() ?? p['user_id']?.toString() ?? '');
+      final String? nick = p['nickname'] ?? p['name'];
+      final String? img = p['profile_image'] ?? p['profile_img'] ?? p['image'] ?? p['user_image'];
+
+      if (uId != null) {
+        if (nick != null && nick.isNotEmpty) roomMemberNames[uId] = nick;
+        if (img != null && img.isNotEmpty) roomMemberImages[uId] = img;
+      }
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatRoomScreen(
+          title: room.name,
+          isBotRoom: isBot,
+          roomId: parsedRoomId, 
+          initialMemberNames: roomMemberNames.isNotEmpty ? roomMemberNames : null,
+          initialMemberImages: roomMemberImages.isNotEmpty ? roomMemberImages : null,
+        ),
+      ),
+    ).then((_) {
+      ref.read(chatProvider.notifier).fetchRooms();
+    });
+  }
+
   Widget _buildListCompositeAvatar(ChatModel room) {
     final myProfile = ref.watch(profileProvider).value;
     final String? myProfileImg = myProfile?.profileImage;
@@ -229,6 +422,17 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
       final title = room.name.toLowerCase();
       return title.contains(_searchQuery.toLowerCase());
     }).toList();
+
+    filteredRooms.sort((a, b) {
+      final int aRoomId = int.tryParse(a.id.toString()) ?? 0;
+      final int bRoomId = int.tryParse(b.id.toString()) ?? 0;
+      final bool aPinned = _pinnedRoomIds.contains(aRoomId);
+      final bool bPinned = _pinnedRoomIds.contains(bRoomId);
+
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -394,49 +598,27 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
   }
 
   Widget _buildPureCardBody(ChatModel room, int parsedRoomId) {
-    bool isBot = room.type == ChatType.ai;
-
-    final Map<int, String> roomMemberNames = {};
-    final Map<int, String?> roomMemberImages = {};
-
-    for (var p in room.humanProfiles) {
-      final int? uId = int.tryParse(p['id']?.toString() ?? p['user_id']?.toString() ?? '');
-      final String? nick = p['nickname'] ?? p['name'];
-      final String? img = p['profile_image'] ?? p['profile_img'] ?? p['image'] ?? p['user_image'];
-
-      if (uId != null) {
-        if (nick != null && nick.isNotEmpty) roomMemberNames[uId] = nick;
-        if (img != null && img.isNotEmpty) roomMemberImages[uId] = img;
-      }
-    }
+    final bool isPinned = _pinnedRoomIds.contains(parsedRoomId);
+    final bool isMuted = _mutedRoomIds.contains(parsedRoomId);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white, 
+        color: isPinned ? const Color(0xFFF1F0FF) : Colors.white, 
         borderRadius: BorderRadius.circular(18), 
-        border: Border.all(color: const Color(0xFFEDF2F7), width: 1.0), 
+        border: Border.all(color: isPinned ? const Color(0xFF7C5CFC).withOpacity(0.3) : const Color(0xFFEDF2F7), width: 1.0), 
         boxShadow: [BoxShadow(color: const Color(0xFF1E2939).withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ChatRoomScreen(
-                  title: room.name,
-                  isBotRoom: isBot,
-                  roomId: parsedRoomId, 
-                  initialMemberNames: roomMemberNames.isNotEmpty ? roomMemberNames : null,
-                  initialMemberImages: roomMemberImages.isNotEmpty ? roomMemberImages : null,
-                ),
-              ),
-            ).then((_) {
-              ref.read(chatProvider.notifier).fetchRooms();
-            });
+          onTapDown: (details) {
+            _tapPosition = details.globalPosition;
+          },
+          onTap: () => _navigateToRoom(room, parsedRoomId),
+          onLongPress: () {
+            _showKakaoContextMenu(room, parsedRoomId, _tapPosition);
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -453,6 +635,10 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
                           Expanded(
                             child: Row(
                               children: [
+                                if (isPinned) ...[
+                                  const Icon(Icons.push_pin_rounded, size: 14, color: Color(0xFF7C5CFC)),
+                                  const SizedBox(width: 4),
+                                ],
                                 Flexible(
                                   child: Text(
                                     room.name, 
@@ -472,9 +658,18 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            room.lastTime, 
-                            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontFamily: 'Pretendard'),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isMuted) ...[
+                                const Icon(Icons.notifications_off_rounded, size: 13, color: Color(0xFF94A3B8)),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                room.lastTime, 
+                                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontFamily: 'Pretendard'),
+                              ),
+                            ],
                           ),
                         ],
                       ),

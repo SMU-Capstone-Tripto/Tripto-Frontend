@@ -102,6 +102,24 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
     }
   }
 
+  String? _formatImgUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return null;
+    String trimmed = url.trim();
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+
+    try {
+      final baseUri = Uri.parse(AuthStorage.baseUrl);
+      final origin = '${baseUri.scheme}://${baseUri.host}${baseUri.hasPort ? ':${baseUri.port}' : ''}';
+      final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+      return '$origin$path';
+    } catch (_) {
+      return trimmed;
+    }
+  }
+
   Future<void> _updateRoomTitleOnServer(String newName) async {
     try {
       final targetUrl = '${AuthStorage.baseUrl}/chat/${widget.roomId}/name?room_name=$newName';
@@ -223,26 +241,27 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
     );
   }
 
-  /// 🎯 [설정 화면 상단 대형 아바타: S3 프로필 사진 적용]
+  /// 🎯 [편집 불가 / 읽기 전용 대형 아바타: 채팅방 목록 스타일과 동일하게 표시]
   Widget _buildCompositeAvatar(List<int> memberIds, Map<int, String> namesMap, Map<int, String?>? imagesMap) {
     final int count = memberIds.length;
 
     Widget singleMiniAvatar(int id, double size, {Color? bg}) {
       final String name = namesMap[id] ?? '나';
       final String char = name.isNotEmpty ? name.substring(0, 1) : '나';
-      final String? imgUrl = imagesMap?[id];
+      final String? rawImg = imagesMap?[id];
+      final String? formattedUrl = _formatImgUrl(rawImg);
 
       return Container(
         width: size, height: size,
         decoration: BoxDecoration(
-          color: bg ?? const Color(0xFFCBD5E1),
+          color: bg ?? const Color(0xFF6241D9),
           borderRadius: BorderRadius.circular(size * 0.35), 
         ),
         clipBehavior: Clip.antiAlias,
         alignment: Alignment.center,
-        child: (imgUrl != null && imgUrl.isNotEmpty)
+        child: (formattedUrl != null && formattedUrl.isNotEmpty)
             ? Image.network(
-                imgUrl,
+                formattedUrl,
                 width: size,
                 height: size,
                 fit: BoxFit.cover,
@@ -268,6 +287,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
           }
           else if (count == 2) {
             return Stack(
+              clipBehavior: Clip.hardEdge,
               children: [
                 Positioned(left: 4, top: 4, child: singleMiniAvatar(memberIds[0], 52, bg: const Color(0xFF818CF8))),
                 Positioned(right: 4, bottom: 4, child: singleMiniAvatar(memberIds[1], 52, bg: const Color(0xFF6366F1))),
@@ -276,6 +296,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
           }
           else if (count == 3) {
             return Stack(
+              clipBehavior: Clip.hardEdge,
               children: [
                 Positioned(left: 26, top: 4, child: singleMiniAvatar(memberIds[0], 48, bg: const Color(0xFF94A3B8))),
                 Positioned(left: 2, bottom: 4, child: singleMiniAvatar(memberIds[1], 48, bg: const Color(0xFF64748B))),
@@ -285,6 +306,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
           }
           else {
             return Stack(
+              clipBehavior: Clip.hardEdge,
               children: [
                 Positioned(left: 4, top: 4, child: singleMiniAvatar(memberIds[0], 44, bg: const Color(0xFF94A3B8))),
                 Positioned(right: 4, top: 4, child: singleMiniAvatar(memberIds[1], 44, bg: const Color(0xFF64748B))),
@@ -329,6 +351,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
         children: [
           const SizedBox(height: 35),
           
+          // 🎯 사진 수정 클릭이 불가능한 상단 아바타 스택 영역
           Center(
             child: _buildCompositeAvatar(cleanMembers, widget.userNamesMap, widget.userProfileImagesMap),
           ),
@@ -367,7 +390,8 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
                 
                 final String memberName = widget.userNamesMap[id] ?? '유저';
                 final String shortName = memberName.isNotEmpty ? memberName.substring(0, 1) : '유';
-                final String? profileImgUrl = widget.userProfileImagesMap?[id];
+                final String? rawImgUrl = widget.userProfileImagesMap?[id];
+                final String? formattedImgUrl = _formatImgUrl(rawImgUrl);
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
@@ -379,7 +403,6 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                     onTap: null, 
-                    // 🎯 참여자 리스트에서 유저별 S3 프로필 이미지 로드
                     leading: Container(
                       width: 36,
                       height: 36,
@@ -389,9 +412,9 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
                       ),
                       clipBehavior: Clip.antiAlias,
                       alignment: Alignment.center,
-                      child: (profileImgUrl != null && profileImgUrl.isNotEmpty)
+                      child: (formattedImgUrl != null && formattedImgUrl.isNotEmpty)
                           ? Image.network(
-                              profileImgUrl,
+                              formattedImgUrl,
                               width: 36,
                               height: 36,
                               fit: BoxFit.cover,

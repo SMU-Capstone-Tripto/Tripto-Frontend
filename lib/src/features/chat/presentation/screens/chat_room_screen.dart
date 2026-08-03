@@ -89,16 +89,18 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       final response = await http.get(Uri.parse('${AuthStorage.baseUrl}/auth/me'), headers: AuthStorage.authHeaders);
       if (response.statusCode == 200) {
         final userData = jsonDecode(utf8.decode(response.bodyBytes));
-        setState(() {
-          _myUserId = int.tryParse(userData['id']?.toString() ?? userData['user_id']?.toString() ?? '2') ?? 2;
-          _allRoomMembers.add(_myUserId);
-          _userNamesMap[_myUserId] = userData['nickname']?.toString() ?? userData['name']?.toString() ?? userData['username']?.toString() ?? '나';
-          
-          final String? myProfileImg = userData['profile_image']?.toString() ?? userData['profile_img']?.toString();
-          if (myProfileImg != null && myProfileImg.isNotEmpty) {
-            _userProfileImagesMap[_myUserId] = myProfileImg;
-          }
-        });
+        if (mounted) {
+          setState(() {
+            _myUserId = int.tryParse(userData['id']?.toString() ?? userData['user_id']?.toString() ?? '2') ?? 2;
+            _allRoomMembers.add(_myUserId);
+            _userNamesMap[_myUserId] = userData['nickname']?.toString() ?? userData['name']?.toString() ?? userData['username']?.toString() ?? '나';
+            
+            final String? myProfileImg = userData['profile_image']?.toString() ?? userData['profile_img']?.toString();
+            if (myProfileImg != null && myProfileImg.isNotEmpty) {
+              _userProfileImagesMap[_myUserId] = myProfileImg;
+            }
+          });
+        }
       }
     } catch (e) {
       debugPrint('내 프로필 ID 획득 실패: $e');
@@ -115,7 +117,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           orElse: () => null,
         );
 
-        if (currentRoom != null && currentRoom is Map) {
+        if (currentRoom != null && currentRoom is Map && mounted) {
           final int? owner = int.tryParse(currentRoom['owner_id']?.toString() ?? '');
           if (owner != null) {
             setState(() => _roomOwnerId = owner); 
@@ -225,7 +227,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             }
           }
 
-          bool isAiMessageInHistory = content.startsWith('{"tripto_card_type"');
+          bool isAiMessageInHistory = (senderId == -1) || content.startsWith('{"tripto_card_type"');
           int mappedSenderId = senderId;
           bool mappedIsMe = (senderId == _myUserId);
 
@@ -250,11 +252,13 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           });
         }
 
-        setState(() {
-          _messages.clear(); 
-          _messages.addAll(parsedHistory);
-        });
-        _scrollToBottom();
+        if (mounted) {
+          setState(() {
+            _messages.clear(); 
+            _messages.addAll(parsedHistory);
+          });
+          _scrollToBottom();
+        }
 
         if (highestOpponentMsgId > 0) {
           _sendReadAcknowledge(highestOpponentMsgId);
@@ -294,7 +298,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       
       _wsSubscription = _webSocket?.listen(
         (rawData) {
-          // 🎯 서버 응답 실시간 출력 로그 추가
           debugPrint('📩 [웹소켓 서버 응답]: $rawData');
           _parseAndAppendMessage(rawData.toString());
         },
@@ -311,10 +314,23 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       final Map<String, dynamic> payload = jsonDecode(rawData);
       final String type = payload['type'] ?? '';
       
+      // 1. bot_status: AI 진행 상황 상태 바 출력
+      if (type == 'bot_status') {
+        final String statusMsg = payload['content']?.toString() ?? 'AI 분석 중...';
+        if (mounted) {
+          setState(() {
+            _currentAiStatus = statusMsg;
+          });
+        }
+        return;
+      }
+
+      // 2. new_message: 메시지 수신
       if (type == 'new_message') {
         final int senderId = int.tryParse(payload['sender_id']?.toString() ?? '0') ?? 0;
         final String content = payload['content']?.toString() ?? '';
         final int msgId = int.tryParse(payload['message_id']?.toString() ?? '0') ?? 0;
+        final String step = payload['step']?.toString() ?? '';
 
         if (senderId > 0) _allRoomMembers.add(senderId);
 
@@ -332,24 +348,20 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           return;
         }
 
-        if (senderId == _myUserId) {
-          final int pendingIndex = _messages.indexWhere(
-            (m) => m['sender_id'] == _myUserId && m['message_id'] == null && m['text'] == content
-          );
+        bool isAi = (senderId == -1) || content.startsWith('{"tripto_card_type"');
+        int mappedSenderId = isAi ? -1 : senderId;
 
-          if (pendingIndex != -1) {
-            setState(() {
-              _messages[pendingIndex]['message_id'] = msgId;
-            });
-            return; 
-          }
-        }
-
-        bool isAiCard = content.startsWith('{"tripto_card_type"');
-        int mappedSenderId = isAiCard ? -1 : senderId;
-
-        if (mappedSenderId == -1 && _messages.any((m) => m['sender_id'] == -1 && m['text'] == content)) {
-          return;
+        String formattedText = content;
+        if (step == 'optimized' || payload['itinerary'] != null) {
+          formattedText = jsonEncode({
+            "tripto_card_type": "optimized",
+            "plan_title": payload['plan_title'] ?? widget.title,
+            "itinerary": payload['itinerary'] ?? [],
+            "estimated_cost": payload['estimated_cost'] ?? {},
+            "content": content,
+          });
+        } else if (step == 'vote_confirm') {
+          if (mounted) setState(() => _showVoteConfirmButtons = true);
         }
 
         final now = DateTime.now();
@@ -357,15 +369,40 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
         if (mounted) {
           setState(() {
+            _currentAiStatus = null;
+
+            if (mappedSenderId == _myUserId) {
+              final int pendingIdx = _messages.indexWhere(
+                (m) => m['sender_id'] == _myUserId && m['message_id'] == null && m['text'] == content
+              );
+              if (pendingIdx != -1) {
+                _messages[pendingIdx]['message_id'] = msgId > 0 ? msgId : null;
+                return;
+              }
+            }
+
+            // AI 대기 말풍선(-999) 교체
+            if (mappedSenderId == -1) {
+              final int tempAiIdx = _messages.indexWhere((m) => m['message_id'] == -999);
+              if (tempAiIdx != -1) {
+                _messages[tempAiIdx]['message_id'] = msgId > 0 ? msgId : null;
+                _messages[tempAiIdx]['text'] = formattedText;
+                _messages[tempAiIdx]['time'] = timeStr;
+                return;
+              }
+            }
+
             _messages.add(<String, dynamic>{
               'message_id': msgId > 0 ? msgId : null,
               'sender_id': mappedSenderId,
               'isMe': (mappedSenderId == _myUserId), 
-              'text': content,
+              'text': formattedText,
               'time': timeStr,
             });
           });
+
           _scrollToBottom();
+
           if (senderId != _myUserId && msgId > 0) {
             _sendReadAcknowledge(msgId);
           }
@@ -445,48 +482,49 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 final String type = payload['type'] ?? '';
 
                 if (type == 'status') {
-                  setState(() => _currentAiStatus = payload['message']);
+                  if (mounted) setState(() => _currentAiStatus = payload['message']);
                 } 
                 else if (type == 'result') {
                   final String step = payload['step'] ?? '';
                   accumulatedText = payload['content'] ?? '';
 
                   if (step == 'vote_confirm') {
-                    setState(() => _showVoteConfirmButtons = true); 
+                    if (mounted) setState(() => _showVoteConfirmButtons = true); 
                   } 
                   else if (step == 'optimized' || payload['itinerary'] != null) {
                     finalOptimizedData = payload;
                   }
 
+                  if (mounted) {
+                    setState(() {
+                      final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
+                      if (idx != -1) _messages[idx]['text'] = accumulatedText;
+                    });
+                    _scrollToBottom();
+                  }
+                }
+              } else {
+                accumulatedText = dataContent;
+                if (mounted) {
                   setState(() {
                     final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
                     if (idx != -1) _messages[idx]['text'] = accumulatedText;
                   });
-                  _scrollToBottom();
                 }
-              } else {
-                accumulatedText = dataContent;
+              }
+            } catch (_) {
+              accumulatedText = dataContent;
+              if (mounted) {
                 setState(() {
                   final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
                   if (idx != -1) _messages[idx]['text'] = accumulatedText;
                 });
               }
-            } catch (_) {
-              accumulatedText = dataContent;
-              setState(() {
-                final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-                if (idx != -1) _messages[idx]['text'] = accumulatedText;
-              });
             }
           }
         }
 
-        bool isSocketConnected = (_webSocket != null && _webSocket!.readyState == WebSocket.open);
-        if (isSocketConnected) {
-          setState(() {
-            _messages.removeWhere((m) => m['message_id'] == tempMsgId);
-          });
-        } else {
+        if (mounted) {
           setState(() {
             final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
             if (idx != -1) {
@@ -509,10 +547,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     } catch (e) {
       debugPrint('AI 에이전트 장애: $e');
     } finally {
-      setState(() {
-        _isAiStreaming = false;
-        _currentAiStatus = null;
-      });
+      if (mounted) {
+        setState(() {
+          _isAiStreaming = false;
+          _currentAiStatus = null;
+        });
+      }
     }
   }
 
@@ -527,21 +567,30 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
   }
 
-  void _sendMessage() {
+void _sendMessage() {
     if (_msgController.text.trim().isEmpty) return;
     final String originalText = _msgController.text.trim();
     _msgController.clear();
 
-    // 🎯 [핵심 방어 코드 및 전송 디버그 로그 추가]
-    if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
+    // 🎯 '@트립토' / '@tripto' 또는 투표 키워드 포함 여부 판별
+    final bool isAiCall = originalText.contains('@tripto') || originalText.contains('@트립토');
+    final bool isVoteTrigger = _isInternalVoteWord(originalText);
+    final bool shouldTriggerAi = isAiCall || isVoteTrigger;
+
+    final bool isWsConnected = (_webSocket != null && _webSocket!.readyState == WebSocket.open);
+
+    if (isWsConnected) {
+      // 🎯 [핵심]: 백엔드 웹소켓에 AI 호출 여부 플래그(trigger_ai)를 함께 전달
       final Map<String, dynamic> socketRequestPayload = {
         "action": "send_message",
         "content": originalText,
+        "trigger_ai": shouldTriggerAi, // 태그 없으면 false 전달 -> 백엔드 자동 대답 차단용
+        "is_ai_call": shouldTriggerAi,
       };
       debugPrint('📤 [웹소켓 전송]: ${jsonEncode(socketRequestPayload)}');
       _webSocket!.add(jsonEncode(socketRequestPayload));
     } else {
-      debugPrint('⚠️ 웹소켓 미연결 상태 (readyState: ${_webSocket?.readyState}) - 전송 불가');
+      debugPrint('⚠️ 웹소켓 미연결 상태 - 전송 불가');
     }
     
     final now = DateTime.now();
@@ -559,10 +608,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     });
     _scrollToBottom();
 
-    final bool isAiCall = originalText.startsWith('@tripto') || originalText.startsWith('@트립토');
-    final bool isVoteTrigger = _isInternalVoteWord(originalText);
-
-    if (isAiCall || isVoteTrigger) {
+    // 🎯 HTTP AI 스트리밍 호출 (태그가 있을 때만 실행)
+    if (shouldTriggerAi) {
       String purePrompt = originalText.replaceAll('@tripto', '').replaceAll('@트립토', '').trim();
       if (purePrompt.isEmpty && isVoteTrigger) purePrompt = originalText;
       
@@ -695,6 +742,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                         label: const Text("네, 시작해 주세요", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Pretendard', fontSize: 13)),
                         onPressed: () {
                           setState(() => _showVoteConfirmButtons = false);
+                          if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
+                            _webSocket!.add(jsonEncode({"action": "send_message", "content": "@트립토 네"}));
+                          }
                           _fireAiAgentStream("네"); 
                         },
                       ),
@@ -726,6 +776,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           children: [
             Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, size: 22, color: Color(0xFF64748B))),
             const SizedBox(width: 8),
+            
+            // 🎯 [항상 노출]: 1:1 방/단체방 구분 없이 @트립토 태그 버튼 제공
             GestureDetector(
               onTap: _insertAiTag,
               child: Container(
@@ -747,6 +799,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               ),
             ),
             const SizedBox(width: 8),
+            
             Expanded(
               child: Container(
                 height: 40, padding: const EdgeInsets.symmetric(horizontal: 16),

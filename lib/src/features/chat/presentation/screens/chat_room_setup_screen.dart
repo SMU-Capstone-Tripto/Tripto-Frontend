@@ -23,7 +23,6 @@ class ChatRoomSetupScreen extends StatefulWidget {
 class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
   late final TextEditingController _nameController;
   late String _defaultRoomName;
-  String? _pickedImagePath;
   bool _isCreating = false;
 
   late List<String> _localNames;
@@ -37,12 +36,6 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
     _defaultRoomName =
         _localNames.isEmpty ? "이름 없는 대화방" : _localNames.join(', ');
     _nameController = TextEditingController(text: _defaultRoomName);
-  }
-
-  Future<void> _handleImageSelection() async {
-    setState(() {
-      _pickedImagePath = "https://placehold.co/200x200";
-    });
   }
 
   Map<String, String> _buildHeaders() {
@@ -80,7 +73,6 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
             jsonDecode(utf8.decode(response.bodyBytes));
         final int generatedRoomId = resData['room_id'] ?? resData['id'] ?? 14;
 
-        // 🎯 [생성 주입 결합]: 초대 창에서 추가했던 친구들의 진짜 ID와 닉네임을 맵 객체로 완벽 바인딩합니다.
         final Map<int, String> contextNamesMap = {};
         for (int i = 0; i < _localIds.length; i++) {
           if (i < _localNames.length) {
@@ -88,13 +80,15 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
           }
         }
 
+        final bool isAiRoom = _localIds.contains(-1);
+
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
             builder: (_) => ChatRoomScreen(
               title: finalRoomName,
+              isBotRoom: isAiRoom, // 🎯 1:1 AI 채팅방 속성 바인딩
               roomId: generatedRoomId,
-              // 💥 이제 ChatRoomScreen 생성자가 이 장부를 정확하게 받으므로 컴파일 에러 없이 연동됩니다!
               initialMemberNames: contextNamesMap,
             ),
           ),
@@ -106,16 +100,92 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
           final err = jsonDecode(utf8.decode(response.bodyBytes));
           errorStr = err['detail']?.toString() ?? errorStr;
         } catch (_) {}
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context)
               .showSnackBar(SnackBar(content: Text('방 생성 실패: $errorStr')));
+        }
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('통신 실패: $e')));
+      }
     } finally {
       if (mounted) setState(() => _isCreating = false);
+    }
+  }
+
+  /// 🎯 [편집 불가 조합 아바타: 참여자 인원수에 맞게 아바타 스택 생성]
+  Widget _buildCompositeAvatar() {
+    final int count = _localNames.length;
+
+    Widget singleAvatar(int index, double size, {Color? bg}) {
+      final String name = index < _localNames.length ? _localNames[index] : '유저';
+      final int id = index < _localIds.length ? _localIds[index] : 0;
+      final bool isBot = (id == -1) || name.contains('트립토');
+      final String initial = name.isNotEmpty ? name.substring(0, 1) : '유';
+
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: isBot ? const Color(0xFFF5F3FF) : (bg ?? const Color(0xFF6241D9)),
+          borderRadius: BorderRadius.circular(size * 0.35),
+          border: isBot ? Border.all(color: const Color(0xFF524582).withOpacity(0.3)) : null,
+        ),
+        alignment: Alignment.center,
+        child: isBot
+            ? Icon(Icons.auto_awesome, size: size * 0.45, color: const Color(0xFF524582))
+            : Text(
+                initial,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: size * 0.45,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Pretendard',
+                ),
+              ),
+      );
+    }
+
+    if (count <= 1) {
+      return singleAvatar(0, 88);
+    } else if (count == 2) {
+      return SizedBox(
+        width: 88,
+        height: 88,
+        child: Stack(
+          children: [
+            Positioned(left: 0, top: 0, child: singleAvatar(0, 48, bg: const Color(0xFF818CF8))),
+            Positioned(right: 0, bottom: 0, child: singleAvatar(1, 48, bg: const Color(0xFF6366F1))),
+          ],
+        ),
+      );
+    } else if (count == 3) {
+      return SizedBox(
+        width: 88,
+        height: 88,
+        child: Stack(
+          children: [
+            Positioned(left: 20, top: 0, child: singleAvatar(0, 42, bg: const Color(0xFF94A3B8))),
+            Positioned(left: 0, bottom: 0, child: singleAvatar(1, 42, bg: const Color(0xFF64748B))),
+            Positioned(right: 0, bottom: 0, child: singleAvatar(2, 42, bg: const Color(0xFF475569))),
+          ],
+        ),
+      );
+    } else {
+      return SizedBox(
+        width: 88,
+        height: 88,
+        child: Stack(
+          children: [
+            Positioned(left: 0, top: 0, child: singleAvatar(0, 40, bg: const Color(0xFF94A3B8))),
+            Positioned(right: 0, top: 0, child: singleAvatar(1, 40, bg: const Color(0xFF64748B))),
+            Positioned(left: 0, bottom: 0, child: singleAvatar(2, 40, bg: const Color(0xFF475569))),
+            Positioned(right: 0, bottom: 0, child: singleAvatar(3, 40, bg: const Color(0xFF334155))),
+          ],
+        ),
+      );
     }
   }
 
@@ -141,7 +211,8 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
             style: TextStyle(
                 color: Color(0xFF1D1D1D),
                 fontSize: 18,
-                fontWeight: FontWeight.w700)),
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Pretendard')),
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 30.0),
@@ -149,43 +220,19 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 20),
+            
+            // 🎯 [수정]: 사진 편집 버튼을 완전히 빼고 읽기 전용 프로필 조합 아바타로 교체
             Center(
-              child: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 44,
-                    backgroundColor: const Color(0xFFE5E7EB),
-                    backgroundImage: _pickedImagePath != null
-                        ? NetworkImage(_pickedImagePath!)
-                        : null,
-                    child: _pickedImagePath == null
-                        ? const Icon(Icons.groups,
-                            color: Colors.white, size: 40)
-                        : null,
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: GestureDetector(
-                      onTap: _handleImageSelection,
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(
-                            color: Color(0xFF6241D9), shape: BoxShape.circle),
-                        child: const Icon(Icons.camera_alt,
-                            color: Colors.white, size: 14),
-                      ),
-                    ),
-                  )
-                ],
-              ),
+              child: _buildCompositeAvatar(),
             ),
+
             const SizedBox(height: 30),
             const Text('채팅방 이름',
                 style: TextStyle(
                     color: Color(0xFF6F6F6F),
                     fontSize: 13,
-                    fontWeight: FontWeight.w500)),
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'Pretendard')),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -197,7 +244,8 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
                 style: const TextStyle(
                     color: Color(0xFF1E2939),
                     fontSize: 15,
-                    fontWeight: FontWeight.w600),
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Pretendard'),
                 decoration: const InputDecoration(
                     border: InputBorder.none,
                     hintStyle: TextStyle(color: Color(0xFF94A3B8))),
@@ -211,12 +259,14 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
                     style: TextStyle(
                         color: Color(0xFF6F6F6F),
                         fontSize: 13,
-                        fontWeight: FontWeight.w500)),
+                        fontWeight: FontWeight.w500,
+                        fontFamily: 'Pretendard')),
                 Text('${_localNames.length}명',
                     style: const TextStyle(
                         color: Color(0xFF6241D9),
                         fontSize: 13,
-                        fontWeight: FontWeight.w600)),
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Pretendard')),
               ],
             ),
             const SizedBox(height: 12),
@@ -225,6 +275,9 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
                 itemCount: _localNames.length,
                 itemBuilder: (context, index) {
                   final name = _localNames[index];
+                  final id = index < _localIds.length ? _localIds[index] : 0;
+                  final bool isBot = (id == -1) || name.contains('트립토');
+
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(12),
@@ -234,17 +287,19 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
                         border: Border.all(color: const Color(0xFFF1F5F9))),
                     child: Row(
                       children: [
-                        const CircleAvatar(
+                        CircleAvatar(
                             radius: 14,
-                            backgroundColor: Color(0xFFCBD5E1),
-                            child: Icon(Icons.person,
-                                color: Colors.white, size: 14)),
+                            backgroundColor: isBot ? const Color(0xFFF5F3FF) : const Color(0xFFCBD5E1),
+                            child: isBot
+                                ? const Icon(Icons.auto_awesome, color: Color(0xFF524582), size: 14)
+                                : const Icon(Icons.person, color: Colors.white, size: 14)),
                         const SizedBox(width: 12),
                         Text(name,
-                            style: const TextStyle(
-                                color: Color(0xFF1E2939),
+                            style: TextStyle(
+                                color: isBot ? const Color(0xFF524582) : const Color(0xFF1E2939),
                                 fontSize: 14,
-                                fontWeight: FontWeight.w600)),
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'Pretendard')),
                         const Spacer(),
                         GestureDetector(
                           onTap: () {
@@ -293,7 +348,8 @@ class _ChatRoomSetupScreenState extends State<ChatRoomSetupScreen> {
                           style: TextStyle(
                               color: Colors.white,
                               fontSize: 16,
-                              fontWeight: FontWeight.w600)),
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'Pretendard')),
                 ),
               ),
             ),
