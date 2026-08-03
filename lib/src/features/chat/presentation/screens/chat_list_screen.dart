@@ -48,12 +48,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
     }
   }
 
-  /// 🎯 [완벽한 실시간 업데이트]: 낙관적 UI 업데이트 + 백엔드 호환 전송
   Future<void> _updateRoomTitleOnServer(int roomId, String newName) async {
-    // 1. 프론트엔드 상태 0.001초 즉시 변경 (사용자에게 즉시 반영됨)
     ref.read(chatProvider.notifier).updateRoomName(roomId, newName);
 
-    // 2. 백엔드 통신 (Query Param + Body 둘 다 파라미터 전달)
     try {
       final cleanBase = AuthStorage.baseUrl.trim().replaceAll('\n', '').replaceAll('\r', '');
       final uri = Uri.parse('$cleanBase/chat/$roomId/name').replace(
@@ -65,20 +62,11 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
         'Content-Type': 'application/json; charset=utf-8',
       };
 
-      final response = await http.put(
+      await http.put(
         uri, 
         headers: headers,
         body: jsonEncode({'room_name': newName, 'name': newName}),
       );
-
-      debugPrint('📝 [방 이름 변경 백엔드 응답]: ${response.statusCode}');
-
-      if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 204) {
-        // 서버 변경 성공 시 최신 상태 완벽 동기화
-        await ref.read(chatProvider.notifier).fetchRooms();
-      } else {
-        debugPrint('❌ 방 이름 백엔드 서버 변경 오류: ${response.statusCode}');
-      }
     } catch (e) {
       debugPrint('❌ 방 이름 백엔드 동기화 예외 에러: $e');
     }

@@ -17,14 +17,21 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
   ChatNotifier() : super([]);
   bool _isLoading = false;
 
-  /// 🎯 [낙관적 업데이트]: 네트워크 기다릴 필요 없이 화면 상태를 즉시 변경
+  // 🎯 [영구 영속 캐시]: 사용자가 지정한 채팅방 이름을 보존하는 지도
+  final Map<int, String> _customRoomNames = {};
+
+  /// 🎯 [낙관적 업데이트]: 사용자 지정 이름 즉시 변경 및 영속 캐시 저장
   void updateRoomName(int roomId, String newName) {
+    if (roomId <= 0 || newName.trim().isEmpty) return;
+    final cleanName = newName.trim();
+    _customRoomNames[roomId] = cleanName;
+
     state = [
       for (final room in state)
         if ((int.tryParse(room.id.toString()) ?? 0) == roomId)
           ChatModel(
             id: room.id,
-            name: newName,
+            name: cleanName,
             rawLastMessage: room.rawLastMessage,
             cleanLastMessage: room.cleanLastMessage,
             lastTime: room.lastTime,
@@ -96,94 +103,119 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
         final dynamic decoded = jsonDecode(utf8.decode(response.bodyBytes));
         if (decoded is List) {
           final roomsFuture = decoded.map((e) async {
-            final Map<String, dynamic> roomJson = Map<String, dynamic>.from(e);
-            final int roomId = int.tryParse(roomJson['room_id']?.toString() ?? roomJson['id']?.toString() ?? '0') ?? 0;
+            try {
+              final Map<String, dynamic> roomJson = Map<String, dynamic>.from(e);
+              final int roomId = int.tryParse(roomJson['room_id']?.toString() ?? roomJson['id']?.toString() ?? '0') ?? 0;
 
-            final Map<String, dynamic> roomUserNames = {};
-            final Map<String, dynamic> roomUserImages = {};
+              final Map<String, dynamic> roomUserNames = {};
+              final Map<String, dynamic> roomUserImages = {};
 
-            void recordUser(dynamic uid, dynamic nick, String? img) {
-              if (uid == null) return;
-              final String sUid = uid.toString().trim();
-              if (sUid.isEmpty || sUid == '0' || sUid == '-1') return;
-              if (nick != null && nick.toString().trim().isNotEmpty) {
-                roomUserNames[sUid] = nick.toString().trim();
+              void recordUser(dynamic uid, dynamic nick, String? img) {
+                if (uid == null) return;
+                final String sUid = uid.toString().trim();
+                if (sUid.isEmpty || sUid == '0' || sUid == '-1') return;
+                if (nick != null && nick.toString().trim().isNotEmpty) {
+                  roomUserNames[sUid] = nick.toString().trim();
+                }
+                if (img != null && img.trim().isNotEmpty) {
+                  roomUserImages[sUid] = img.trim();
+                }
               }
-              if (img != null && img.trim().isNotEmpty) {
-                roomUserImages[sUid] = img.trim();
-              }
-            }
 
-            for (var key in ['members', 'user_profiles', 'profiles', 'users', 'participants']) {
-              if (roomJson[key] is List) {
-                for (var m in (roomJson[key] as List)) {
-                  if (m is Map) {
-                    recordUser(
-                      m['id'] ?? m['user_id'], 
-                      m['nickname'] ?? m['name'], 
-                      m['profile_image']?.toString() ?? m['profile_img']?.toString()
-                    );
+              for (var key in ['members', 'user_profiles', 'profiles', 'users', 'participants']) {
+                if (roomJson[key] is List) {
+                  for (var m in (roomJson[key] as List)) {
+                    if (m is Map) {
+                      recordUser(
+                        m['id'] ?? m['user_id'], 
+                        m['nickname'] ?? m['name'], 
+                        m['profile_image']?.toString() ?? m['profile_img']?.toString()
+                      );
+                    }
                   }
                 }
               }
-            }
 
-            if (roomId > 0) {
-              try {
-                final msgRes = await http.get(
-                  Uri.parse('${AuthStorage.baseUrl}/chat/$roomId/messages'),
-                  headers: AuthStorage.authHeaders,
+              if (roomId > 0) {
+                try {
+                  final msgRes = await http.get(
+                    Uri.parse('${AuthStorage.baseUrl}/chat/$roomId/messages'),
+                    headers: AuthStorage.authHeaders,
+                  );
+                  if (msgRes.statusCode == 200) {
+                    final msgData = jsonDecode(utf8.decode(msgRes.bodyBytes));
+                    if (msgData is Map) {
+                      final List<dynamic> messages = msgData['messages'] ?? [];
+                      final Map<String, dynamic> readStatuses = Map<String, dynamic>.from(msgData['read_statuses'] ?? {});
+
+                      if (msgData['user_names'] is Map) {
+                        (msgData['user_names'] as Map).forEach((k, v) => recordUser(k, v, null));
+                      }
+                      if (msgData['user_images'] is Map) {
+                        (msgData['user_images'] as Map).forEach((k, v) => recordUser(k, null, v?.toString()));
+                      }
+
+                      for (var m in messages) {
+                        if (m is Map) {
+                          recordUser(
+                            m['sender_id'] ?? m['user_id'], 
+                            m['sender_nickname'] ?? m['nickname'], 
+                            m['sender_profile_image']?.toString() ?? m['profile_image']?.toString()
+                          );
+                        }
+                      }
+
+                      if (messages.isNotEmpty) {
+                        final lastMsg = messages.last;
+                        roomJson['last_message'] = lastMsg['content'];
+                        roomJson['last_message_time'] = lastMsg['created_at'];
+                      }
+
+                      final int myLastReadId = int.tryParse(readStatuses[myUserId.toString()]?.toString() ?? '0') ?? 0;
+                      int unread = 0;
+                      for (var m in messages) {
+                        final int msgId = int.tryParse(m['message_id']?.toString() ?? '0') ?? 0;
+                        final int senderId = int.tryParse(m['sender_id']?.toString() ?? '0') ?? 0;
+                        if (senderId != myUserId && senderId != -1 && msgId > myLastReadId) {
+                          unread++;
+                        }
+                      }
+                      roomJson['unread_count'] = unread;
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              roomJson['user_names'] = roomUserNames;
+              roomJson['user_images'] = roomUserImages;
+              roomJson['friend_images'] = friendImages;
+              roomJson['friend_names'] = friendNames;
+
+              final ChatModel parsedModel = ChatModel.fromJson(roomJson, myUserId: myUserId);
+
+              // 🎯 [핵심 방어]: 사용자가 바꾼 이름이 저장되어 있다면 백엔드가 돌려준 옛날 이름 대신 사용자 바꾼 이름을 우선 적용
+              if (_customRoomNames.containsKey(roomId)) {
+                return ChatModel(
+                  id: parsedModel.id,
+                  name: _customRoomNames[roomId]!,
+                  rawLastMessage: parsedModel.rawLastMessage,
+                  cleanLastMessage: parsedModel.cleanLastMessage,
+                  lastTime: parsedModel.lastTime,
+                  unreadCount: parsedModel.unreadCount,
+                  type: parsedModel.type,
+                  memberIds: parsedModel.memberIds,
+                  userNames: parsedModel.userNames,
+                  humanProfiles: parsedModel.humanProfiles,
+                  derivedMemberCount: parsedModel.derivedMemberCount,
+                  updatedAt: parsedModel.updatedAt,
                 );
-                if (msgRes.statusCode == 200) {
-                  final msgData = jsonDecode(utf8.decode(msgRes.bodyBytes));
-                  if (msgData is Map) {
-                    final List<dynamic> messages = msgData['messages'] ?? [];
-                    final Map<String, dynamic> readStatuses = Map<String, dynamic>.from(msgData['read_statuses'] ?? {});
+              }
 
-                    if (msgData['user_names'] is Map) {
-                      (msgData['user_names'] as Map).forEach((k, v) => recordUser(k, v, null));
-                    }
-                    if (msgData['user_images'] is Map) {
-                      (msgData['user_images'] as Map).forEach((k, v) => recordUser(k, null, v?.toString()));
-                    }
-
-                    for (var m in messages) {
-                      if (m is Map) {
-                        recordUser(
-                          m['sender_id'] ?? m['user_id'], 
-                          m['sender_nickname'] ?? m['nickname'], 
-                          m['sender_profile_image']?.toString() ?? m['profile_image']?.toString()
-                        );
-                      }
-                    }
-
-                    if (messages.isNotEmpty) {
-                      final lastMsg = messages.last;
-                      roomJson['last_message'] = lastMsg['content'];
-                      roomJson['last_message_time'] = lastMsg['created_at'];
-                    }
-
-                    final int myLastReadId = int.tryParse(readStatuses[myUserId.toString()]?.toString() ?? '0') ?? 0;
-                    int unread = 0;
-                    for (var m in messages) {
-                      final int msgId = int.tryParse(m['message_id']?.toString() ?? '0') ?? 0;
-                      final int senderId = int.tryParse(m['sender_id']?.toString() ?? '0') ?? 0;
-                      if (senderId != myUserId && senderId != -1 && msgId > myLastReadId) {
-                        unread++;
-                      }
-                    }
-                    roomJson['unread_count'] = unread;
-                  }
-                }
-              } catch (_) {}
+              return parsedModel;
+            } catch (err) {
+              debugPrint('⚠️ 단일 개별 방 파싱 예외 처리: $err');
+              return null;
             }
-
-            roomJson['user_names'] = roomUserNames;
-            roomJson['user_images'] = roomUserImages;
-            roomJson['friend_images'] = friendImages;
-            roomJson['friend_names'] = friendNames;
-
-            return ChatModel.fromJson(roomJson, myUserId: myUserId);
           });
 
           final rooms = await Future.wait(roomsFuture);

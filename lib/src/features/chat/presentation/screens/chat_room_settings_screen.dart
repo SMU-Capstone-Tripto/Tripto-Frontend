@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http; 
 import 'package:tripto/src/core/auth_storage.dart';
+import 'package:tripto/src/features/chat/presentation/chat_provider.dart';
 import 'chat_list_screen.dart';
 import 'photo_album_screen.dart';
 import 'vote_tabs_screen.dart';
@@ -37,7 +39,7 @@ class FlatCrownPainter extends CustomPainter {
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
-class ChatRoomSettingsScreen extends StatefulWidget {
+class ChatRoomSettingsScreen extends ConsumerStatefulWidget {
   final String title;
   final int roomId;
   final List<int> activeMemberIds; 
@@ -56,10 +58,10 @@ class ChatRoomSettingsScreen extends StatefulWidget {
   });
 
   @override
-  State<ChatRoomSettingsScreen> createState() => _ChatRoomSettingsScreenState();
+  ConsumerState<ChatRoomSettingsScreen> createState() => _ChatRoomSettingsScreenState();
 }
 
-class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
+class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen> {
   bool _isNotificationOn = true;
   int _myUserId = 2; 
   late String _roomTitle; 
@@ -121,12 +123,22 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
   }
 
   Future<void> _updateRoomTitleOnServer(String newName) async {
+    ref.read(chatProvider.notifier).updateRoomName(widget.roomId, newName);
+
     try {
-      final targetUrl = '${AuthStorage.baseUrl}/chat/${widget.roomId}/name?room_name=$newName';
-      final response = await http.put(Uri.parse(targetUrl), headers: AuthStorage.authHeaders);
-      if (response.statusCode == 200) {
-        debugPrint('방 이름 서버 변경 성공');
-      }
+      final cleanBase = AuthStorage.baseUrl.trim().replaceAll('\n', '').replaceAll('\r', '');
+      final uri = Uri.parse('$cleanBase/chat/${widget.roomId}/name').replace(
+        queryParameters: {'room_name': newName, 'name': newName},
+      );
+      final headers = {
+        ...AuthStorage.authHeaders,
+        'Content-Type': 'application/json; charset=utf-8',
+      };
+      await http.put(
+        uri, 
+        headers: headers,
+        body: jsonEncode({'room_name': newName, 'name': newName}),
+      );
     } catch (e) {
       debugPrint('방 이름 백엔드 동기화 실패: $e');
     }
@@ -139,7 +151,7 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('📝 채팅방 이름 수정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+        title: const Text('채팅방 이름 수정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
         content: TextField(
           controller: nameEditController,
           autofocus: true,
@@ -241,7 +253,6 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
     );
   }
 
-  /// 🎯 [편집 불가 / 읽기 전용 대형 아바타: 채팅방 목록 스타일과 동일하게 표시]
   Widget _buildCompositeAvatar(List<int> memberIds, Map<int, String> namesMap, Map<int, String?>? imagesMap) {
     final int count = memberIds.length;
 
@@ -351,7 +362,6 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
         children: [
           const SizedBox(height: 35),
           
-          // 🎯 사진 수정 클릭이 불가능한 상단 아바타 스택 영역
           Center(
             child: _buildCompositeAvatar(cleanMembers, widget.userNamesMap, widget.userProfileImagesMap),
           ),
@@ -465,10 +475,11 @@ class _ChatRoomSettingsScreenState extends State<ChatRoomSettingsScreen> {
           const SizedBox(height: 15),
           Container(height: 8, color: const Color(0xFFF5F5F5)), 
 
+          // 🎯 [보낸 사진함 연결]: roomId 전달
           _buildSettingTile(
               Icons.image_outlined,
               '보낸 사진함',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PhotoAlbumScreen()))),
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => PhotoAlbumScreen(roomId: widget.roomId)))),
           _buildSettingTile(
               Icons.check_box_outlined,
               '투표 (준비 중)',

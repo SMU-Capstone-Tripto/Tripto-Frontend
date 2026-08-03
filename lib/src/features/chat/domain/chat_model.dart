@@ -115,6 +115,11 @@ class ChatModel {
       });
     }
 
+    // 🎯 [핵심 보완]: 내 계정 ID가 유효하면 방 참여자에 기본 보존
+    if (myUserId > 0) {
+      getOrInitUser(myUserId);
+    }
+
     final List<dynamic> rawMemberList = [];
     for (var key in ['members', 'user_profiles', 'profiles', 'member_ids', 'invited_user_ids', 'users', 'participants']) {
       if (json[key] is List) {
@@ -157,21 +162,18 @@ class ChatModel {
       }
     }
 
-    // 🎯 [핵심]: 명시적 멤버 리스트가 이미 존재하는 경우 user_names/user_images로 무분별하게 멤버를 추가하지 않음!
     if (json['user_names'] is Map) {
       (json['user_names'] as Map).forEach((k, v) {
         final int? uid = int.tryParse(k.toString());
         if (uid != null && uid > 0) {
-          if (explicitMemberIds.isEmpty || explicitMemberIds.contains(uid)) {
-            var u = getOrInitUser(uid);
-            if (v is Map) {
-              String? nick = v['nickname']?.toString() ?? v['name']?.toString();
-              String? img = v['profile_image']?.toString() ?? v['profile_img']?.toString() ?? v['profile_image_url']?.toString() ?? v['image']?.toString();
-              if (nick != null && nick.trim().isNotEmpty) u['nickname'] = nick.trim();
-              if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
-            } else if (v != null && v.toString().trim().isNotEmpty) {
-              u['nickname'] = v.toString().trim();
-            }
+          var u = getOrInitUser(uid);
+          if (v is Map) {
+            String? nick = v['nickname']?.toString() ?? v['name']?.toString();
+            String? img = v['profile_image']?.toString() ?? v['profile_img']?.toString() ?? v['profile_image_url']?.toString() ?? v['image']?.toString();
+            if (nick != null && nick.trim().isNotEmpty) u['nickname'] = nick.trim();
+            if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
+          } else if (v != null && v.toString().trim().isNotEmpty) {
+            u['nickname'] = v.toString().trim();
           }
         }
       });
@@ -181,20 +183,17 @@ class ChatModel {
       (json['user_images'] as Map).forEach((k, v) {
         final int? uid = int.tryParse(k.toString());
         if (uid != null && uid > 0) {
-          if (explicitMemberIds.isEmpty || explicitMemberIds.contains(uid)) {
-            var u = getOrInitUser(uid);
-            if (v is Map) {
-              String? img = v['profile_image']?.toString() ?? v['profile_img']?.toString() ?? v['profile_image_url']?.toString() ?? v['image']?.toString();
-              if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
-            } else if (v != null && v.toString().trim().isNotEmpty) {
-              u['profile_image'] = v.toString().trim();
-            }
+          var u = getOrInitUser(uid);
+          if (v is Map) {
+            String? img = v['profile_image']?.toString() ?? v['profile_img']?.toString() ?? v['profile_image_url']?.toString() ?? v['image']?.toString();
+            if (img != null && img.trim().isNotEmpty) u['profile_image'] = img.trim();
+          } else if (v != null && v.toString().trim().isNotEmpty) {
+            u['profile_image'] = v.toString().trim();
           }
         }
       });
     }
 
-    // 🎯 [핵심]: 이미 생성된 진짜 방 멤버의 프로필 사진이 비어있을 때만 친구 프로필 캐시에서 S3 주소를 가져옴
     if (json['friend_images'] is Map) {
       (json['friend_images'] as Map).forEach((k, v) {
         final int? uid = int.tryParse(k.toString());

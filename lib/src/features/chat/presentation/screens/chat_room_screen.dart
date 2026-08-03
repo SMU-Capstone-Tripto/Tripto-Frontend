@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http; 
+import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:tripto/src/core/auth_storage.dart';
 import 'chat_room_settings_screen.dart';
 
@@ -49,6 +51,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final List<Map<String, dynamic>> _messages = [];
   final TextEditingController _msgController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _picker = ImagePicker();
   
   WebSocket? _webSocket; 
   StreamSubscription? _wsSubscription;
@@ -75,6 +78,45 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       _userProfileImagesMap.addAll(widget.initialMemberImages!);
     }
     _initializeChatRoom();
+  }
+
+  String _formatTime(dynamic rawTime) {
+    if (rawTime == null) {
+      final now = DateTime.now();
+      int h = now.hour % 12;
+      if (h == 0) h = 12;
+      return '${now.hour >= 12 ? "오후" : "오전"} $h:${now.minute.toString().padLeft(2, '0')}';
+    }
+
+    String str = rawTime.toString().trim();
+    if (str.isEmpty) {
+      final now = DateTime.now();
+      int h = now.hour % 12;
+      if (h == 0) h = 12;
+      return '${now.hour >= 12 ? "오후" : "오전"} $h:${now.minute.toString().padLeft(2, '0')}';
+    }
+
+    if (str.startsWith('오전') || str.startsWith('오후')) {
+      return str;
+    }
+
+    DateTime? parsed;
+    try {
+      if (!str.contains('Z') && !str.contains('+') && !RegExp(r'-\d{2}:\d{2}$').hasMatch(str)) {
+        parsed = DateTime.tryParse(str);
+      } else {
+        parsed = DateTime.tryParse(str)?.toLocal();
+      }
+    } catch (_) {}
+
+    parsed ??= DateTime.now();
+
+    int h = parsed.hour % 12;
+    if (h == 0) h = 12;
+    String period = parsed.hour >= 12 ? "오후" : "오전";
+    String minuteStr = parsed.minute.toString().padLeft(2, '0');
+
+    return '$period $h:$minuteStr';
   }
 
   Future<void> _initializeChatRoom() async {
@@ -217,6 +259,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           final int msgId = int.tryParse(msgMap['message_id']?.toString() ?? '0') ?? 0;
           final int senderId = int.tryParse(msgMap['sender_id']?.toString() ?? '0') ?? 0;
           final String content = msgMap['content']?.toString() ?? '';
+          final String msgType = msgMap['message_type']?.toString() ?? 'text';
           final String? senderImg = msgMap['sender_profile_image']?.toString() ?? msgMap['profile_image']?.toString();
           
           if (content.trim().isEmpty) continue;
@@ -236,8 +279,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             mappedIsMe = false;
           }
 
-          final DateTime parsedTime = DateTime.tryParse(msgMap['created_at']?.toString() ?? '') ?? DateTime.now();
-          final String timeStr = '${parsedTime.hour >= 12 ? "오후" : "오전"} ${(parsedTime.hour % 12 == 0 ? 12 : parsedTime.hour % 12)}:${parsedTime.minute.toString().padLeft(2, '0')}';
+          final String timeStr = _formatTime(msgMap['created_at']);
 
           if (senderId != _myUserId && msgId > highestOpponentMsgId) {
             highestOpponentMsgId = msgId;
@@ -248,6 +290,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             'sender_id': mappedSenderId,
             'isMe': mappedIsMe, 
             'text': content,
+            'message_type': msgType,
             'time': timeStr,
           });
         }
@@ -314,7 +357,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       final Map<String, dynamic> payload = jsonDecode(rawData);
       final String type = payload['type'] ?? '';
       
-      // 1. bot_status: AI 진행 상황 상태 바 출력
       if (type == 'bot_status') {
         final String statusMsg = payload['content']?.toString() ?? 'AI 분석 중...';
         if (mounted) {
@@ -325,12 +367,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         return;
       }
 
-      // 2. new_message: 메시지 수신
       if (type == 'new_message') {
         final int senderId = int.tryParse(payload['sender_id']?.toString() ?? '0') ?? 0;
         final String content = payload['content']?.toString() ?? '';
         final int msgId = int.tryParse(payload['message_id']?.toString() ?? '0') ?? 0;
         final String step = payload['step']?.toString() ?? '';
+        final String msgType = payload['message_type']?.toString() ?? 'text';
 
         if (senderId > 0) _allRoomMembers.add(senderId);
 
@@ -364,8 +406,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           if (mounted) setState(() => _showVoteConfirmButtons = true);
         }
 
-        final now = DateTime.now();
-        final String timeStr = '${now.hour >= 12 ? "오후" : "오전"} ${(now.hour % 12 == 0 ? 12 : now.hour % 12)}:${now.minute.toString().padLeft(2, '0')}';
+        final String timeStr = _formatTime(payload['created_at']);
 
         if (mounted) {
           setState(() {
@@ -373,20 +414,23 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
             if (mappedSenderId == _myUserId) {
               final int pendingIdx = _messages.indexWhere(
-                (m) => m['sender_id'] == _myUserId && m['message_id'] == null && m['text'] == content
+                (m) => m['sender_id'] == _myUserId && (m['message_id'] == null || m['message_id'] == -888 || m['message_id'] == -999) && (m['text'] == content || m['message_type'] == msgType)
               );
               if (pendingIdx != -1) {
                 _messages[pendingIdx]['message_id'] = msgId > 0 ? msgId : null;
+                _messages[pendingIdx]['text'] = formattedText;
+                _messages[pendingIdx]['message_type'] = msgType;
+                _messages[pendingIdx]['time'] = timeStr;
                 return;
               }
             }
 
-            // AI 대기 말풍선(-999) 교체
             if (mappedSenderId == -1) {
               final int tempAiIdx = _messages.indexWhere((m) => m['message_id'] == -999);
               if (tempAiIdx != -1) {
                 _messages[tempAiIdx]['message_id'] = msgId > 0 ? msgId : null;
                 _messages[tempAiIdx]['text'] = formattedText;
+                _messages[tempAiIdx]['message_type'] = msgType;
                 _messages[tempAiIdx]['time'] = timeStr;
                 return;
               }
@@ -397,6 +441,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               'sender_id': mappedSenderId,
               'isMe': (mappedSenderId == _myUserId), 
               'text': formattedText,
+              'message_type': msgType,
               'time': timeStr,
             });
           });
@@ -431,6 +476,324 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
   }
 
+  /// 🎯 [사진 업로드 및 전송]: 크기에 맞춘 실시간 미리보기 로딩 말풍선 전송
+  Future<void> _pickAndSendImage() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+
+      if (pickedFile == null) return;
+
+      final File imageFile = File(pickedFile.path);
+
+      // 1. 전송 전 확인 다이얼로그 (이모티콘 제거됨)
+      final bool? confirmSend = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            '사진 전송 확인',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 250),
+                  child: Image.file(imageFile, fit: BoxFit.cover),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '선택한 사진을 채팅방에 전송하시겠습니까?',
+                style: TextStyle(fontSize: 13, color: Color(0xFF475569), fontFamily: 'Pretendard'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소', style: TextStyle(color: Colors.grey, fontFamily: 'Pretendard')),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF524582),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('전송', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmSend != true) return;
+
+      final String tempTimeStr = _formatTime(DateTime.now());
+
+      // 2. 채팅창에 사진 크기에 맞는 로딩 말풍선 즉시 추가
+      setState(() {
+        _messages.add({
+          'message_id': -888, 
+          'sender_id': _myUserId,
+          'isMe': true,
+          'text': imageFile.path,
+          'message_type': 'local_image',
+          'time': tempTimeStr,
+        });
+      });
+      _scrollToBottom();
+
+      final List<int> imageBytes = await imageFile.readAsBytes();
+
+      // 3. Presigned URL 발급
+      final presignedRes = await http.post(
+        Uri.parse('${AuthStorage.baseUrl}/uploads/presigned-url'),
+        headers: {
+          ...AuthStorage.authHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          "content_type": "image/jpeg",
+          "category": "chat",
+        }),
+      );
+
+      if (presignedRes.statusCode != 200) {
+        throw Exception('Presigned URL 발급 실패 (${presignedRes.statusCode})');
+      }
+
+      final presignedData = jsonDecode(utf8.decode(presignedRes.bodyBytes));
+      final String uploadUrl = presignedData['upload_url'];
+      final String fileUrl = presignedData['file_url'];
+
+      // 4. S3 Direct Upload (PUT)
+      final uploadRes = await http.put(
+        Uri.parse(uploadUrl),
+        headers: {'Content-Type': 'image/jpeg'},
+        body: imageBytes,
+      );
+
+      if (uploadRes.statusCode != 200 && uploadRes.statusCode != 204) {
+        throw Exception('S3 사진 업로드 실패 (${uploadRes.statusCode})');
+      }
+
+      // 5. POST /chat/{room_id}/image 사진 메시지 저장 API 호출
+      final sendImageRes = await http.post(
+        Uri.parse('${AuthStorage.baseUrl}/chat/${widget.roomId}/image'),
+        headers: {
+          ...AuthStorage.authHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          "image_url": fileUrl,
+        }),
+      );
+
+      if (sendImageRes.statusCode == 200 || sendImageRes.statusCode == 201) {
+        if (mounted) {
+          setState(() {
+            final int idx = _messages.indexWhere((m) => m['message_id'] == -888);
+            if (idx != -1) {
+              _messages[idx] = {
+                'message_id': null,
+                'sender_id': _myUserId,
+                'isMe': true,
+                'text': fileUrl,
+                'message_type': 'image',
+                'time': tempTimeStr,
+              };
+            } else {
+              _messages.add({
+                'message_id': null,
+                'sender_id': _myUserId,
+                'isMe': true,
+                'text': fileUrl,
+                'message_type': 'image',
+                'time': tempTimeStr,
+              });
+            }
+          });
+          _scrollToBottom();
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 사진 전송 프로세스 에러: $e');
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((m) => m['message_id'] == -888);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('사진 전송 실패: $e')),
+        );
+      }
+    }
+  }
+
+  /// 🎯 [사진 크게 보기 및 갤러리 바로 저장 기능]
+  void _showImageDetailModal(String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black.withOpacity(0.92),
+        insetPadding: const EdgeInsets.all(12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.broken_image_rounded, color: Colors.white, size: 48),
+                      SizedBox(height: 8),
+                      Text('이미지를 불러올 수 없습니다.', style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Pretendard')),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 12,
+              left: 16,
+              right: 16,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF524582),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.download_rounded, color: Colors.white, size: 18),
+                    label: const Text(
+                      '다운로드',
+                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+                    ),
+                    onPressed: () async {
+                      try {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('사진 저장 중...'), duration: Duration(milliseconds: 1000)),
+                        );
+                        final res = await http.get(Uri.parse(imageUrl));
+                        if (res.statusCode == 200) {
+                          final bytes = res.bodyBytes;
+                          final tempDir = Directory.systemTemp;
+                          final file = File('${tempDir.path}/tripto_${DateTime.now().millisecondsSinceEpoch}.jpg');
+                          await file.writeAsBytes(bytes);
+
+                          await Share.shareXFiles(
+                            [XFile(file.path)],
+                            text: 'Tripto 이미지 저장',
+                          );
+                        }
+                      } catch (e) {
+                        debugPrint('다운로드 에러: $e');
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('사진 저장에 실패했습니다.')),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.cancel_rounded, color: Colors.white, size: 30),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddAttachmentMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const Text(
+              '첨부 파일 선택',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Pretendard',
+                color: Color(0xFF1E2939),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendImage();
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: const Icon(Icons.photo_library_rounded, color: Color(0xFF524582), size: 26),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '사진 전송',
+                        style: TextStyle(fontSize: 12, fontFamily: 'Pretendard', fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                      )
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _fireAiAgentStream(String cleanMessage) async {
     if (_isAiStreaming) return;
     setState(() {
@@ -439,13 +802,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     });
 
     final int tempMsgId = -999; 
+    final String tempTimeStr = _formatTime(DateTime.now());
+
     setState(() {
       _messages.add(<String, dynamic>{
         'message_id': tempMsgId,
         'sender_id': -1, 
         'isMe': false,
         'text': "🔍 답변을 생성하고 있습니다...", 
-        'time': '',
+        'message_type': 'text',
+        'time': tempTimeStr,
       });
     });
     _scrollToBottom();
@@ -529,6 +895,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
             if (idx != -1) {
               _messages[idx]['message_id'] = DateTime.now().millisecondsSinceEpoch; 
+              _messages[idx]['time'] = _formatTime(DateTime.now());
               if (finalOptimizedData != null) {
                 _messages[idx]['text'] = jsonEncode({
                   "tripto_card_type": "optimized",
@@ -567,12 +934,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
   }
 
-void _sendMessage() {
+  void _sendMessage() {
     if (_msgController.text.trim().isEmpty) return;
     final String originalText = _msgController.text.trim();
     _msgController.clear();
 
-    // 🎯 '@트립토' / '@tripto' 또는 투표 키워드 포함 여부 판별
     final bool isAiCall = originalText.contains('@tripto') || originalText.contains('@트립토');
     final bool isVoteTrigger = _isInternalVoteWord(originalText);
     final bool shouldTriggerAi = isAiCall || isVoteTrigger;
@@ -580,11 +946,10 @@ void _sendMessage() {
     final bool isWsConnected = (_webSocket != null && _webSocket!.readyState == WebSocket.open);
 
     if (isWsConnected) {
-      // 🎯 [핵심]: 백엔드 웹소켓에 AI 호출 여부 플래그(trigger_ai)를 함께 전달
       final Map<String, dynamic> socketRequestPayload = {
         "action": "send_message",
         "content": originalText,
-        "trigger_ai": shouldTriggerAi, // 태그 없으면 false 전달 -> 백엔드 자동 대답 차단용
+        "trigger_ai": shouldTriggerAi, 
         "is_ai_call": shouldTriggerAi,
       };
       debugPrint('📤 [웹소켓 전송]: ${jsonEncode(socketRequestPayload)}');
@@ -593,8 +958,7 @@ void _sendMessage() {
       debugPrint('⚠️ 웹소켓 미연결 상태 - 전송 불가');
     }
     
-    final now = DateTime.now();
-    final String timeStr = '${now.hour >= 12 ? "오후" : "오전"} ${(now.hour % 12 == 0 ? 12 : now.hour % 12)}:${now.minute.toString().padLeft(2, '0')}';
+    final String timeStr = _formatTime(DateTime.now());
 
     setState(() {
       _messages.add(<String, dynamic>{
@@ -602,13 +966,13 @@ void _sendMessage() {
         'sender_id': _myUserId,
         'isMe': true,
         'text': originalText,
+        'message_type': 'text',
         'time': timeStr,
       });
       _allRoomMembers.add(_myUserId); 
     });
     _scrollToBottom();
 
-    // 🎯 HTTP AI 스트리밍 호출 (태그가 있을 때만 실행)
     if (shouldTriggerAi) {
       String purePrompt = originalText.replaceAll('@tripto', '').replaceAll('@트립토', '').trim();
       if (purePrompt.isEmpty && isVoteTrigger) purePrompt = originalText;
@@ -627,6 +991,16 @@ void _sendMessage() {
   int _calculateUnreadCount(Map<String, dynamic> msg) {
     final int? msgId = msg['message_id'];
     final int senderId = msg['sender_id'] ?? 0;
+
+    if (senderId == _myUserId && (msgId == null || msgId <= 0)) {
+      int count = 0;
+      for (var memberId in _allRoomMembers) {
+        if (memberId == _myUserId || memberId == -1) continue;
+        count++;
+      }
+      return count;
+    }
+
     if (msgId == null || msgId <= 0) return 0;
 
     int unreadPeople = 0;
@@ -716,7 +1090,7 @@ void _sendMessage() {
                         itemBuilder: (context, index) => _buildChatBubble(_messages[index], index),
                       ),
           ),
-          
+
           if (_showVoteConfirmButtons)
             Container(
               color: const Color(0xFFF1F5F9),
@@ -743,7 +1117,12 @@ void _sendMessage() {
                         onPressed: () {
                           setState(() => _showVoteConfirmButtons = false);
                           if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
-                            _webSocket!.add(jsonEncode({"action": "send_message", "content": "@트립토 네"}));
+                            _webSocket!.add(jsonEncode({
+                              "action": "send_message", 
+                              "content": "@트립토 네",
+                              "trigger_ai": true,
+                              "is_ai_call": true,
+                            }));
                           }
                           _fireAiAgentStream("네"); 
                         },
@@ -774,10 +1153,15 @@ void _sendMessage() {
         decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1))),
         child: Row(
           children: [
-            Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, size: 22, color: Color(0xFF64748B))),
+            GestureDetector(
+              onTap: _showAddAttachmentMenu,
+              child: Container(
+                padding: const EdgeInsets.all(6), 
+                decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle), 
+                child: const Icon(Icons.add_rounded, size: 22, color: Color(0xFF64748B)),
+              ),
+            ),
             const SizedBox(width: 8),
-            
-            // 🎯 [항상 노출]: 1:1 방/단체방 구분 없이 @트립토 태그 버튼 제공
             GestureDetector(
               onTap: _insertAiTag,
               child: Container(
@@ -799,7 +1183,6 @@ void _sendMessage() {
               ),
             ),
             const SizedBox(width: 8),
-            
             Expanded(
               child: Container(
                 height: 40, padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -837,6 +1220,7 @@ void _sendMessage() {
     final int senderId = msg['sender_id'] ?? 0;
     final int unreadCount = _calculateUnreadCount(msg);
     final String rawText = msg['text'] ?? '';
+    final String msgType = msg['message_type'] ?? 'text';
 
     final bool isAi = (senderId == -1);
 
@@ -877,6 +1261,10 @@ void _sendMessage() {
         }
       } catch (_) {}
     }
+
+    final bool isLocalLoadingImage = msgType == 'local_image';
+    final bool isImageMessage = msgType == 'image' || isLocalLoadingImage ||
+        (rawText.startsWith('http') && (rawText.contains('.jpg') || rawText.contains('.png') || rawText.contains('.jpeg') || rawText.contains('s3.amazonaws') || rawText.contains('presigned')));
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -951,23 +1339,78 @@ void _sendMessage() {
                 const SizedBox(width: 6),
               ],
               
-              isOptimizedCard && cardData != null
-                  ? Container(
-                      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.62), 
-                      child: _buildAiStructuredCard(cardData),
-                    )
-                  : isAiText || isAi
-                      ? _buildAiQuestionCard(displayAiText) 
-                      : Container(
-                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.62),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isMe ? const Color(0xFF524582) : Colors.white,
-                            borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(isMe ? 16 : 4), bottomRight: Radius.circular(isMe ? 4 : 16)),
-                            border: isMe ? null : Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: Text(rawText, style: TextStyle(color: isMe ? Colors.white : const Color(0xFF1E2939), fontSize: 14, fontFamily: 'Pretendard', height: 1.4)),
+              isImageMessage
+                  ? GestureDetector(
+                      onTap: isLocalLoadingImage ? null : () => _showImageDetailModal(rawText),
+                      child: Container(
+                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.60),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
                         ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            isLocalLoadingImage
+                                ? Image.file(File(rawText), fit: BoxFit.cover)
+                                : Image.network(
+                                    rawText,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Container(
+                                        height: 180,
+                                        color: const Color(0xFFF1F5F9),
+                                        child: const Center(
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF524582)),
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder: (_, __, ___) => Container(
+                                      padding: const EdgeInsets.all(12),
+                                      color: const Color(0xFFF1F5F9),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.broken_image_rounded, size: 20, color: Color(0xFF94A3B8)),
+                                          SizedBox(width: 6),
+                                          Text('이미지를 로드할 수 없습니다', style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontFamily: 'Pretendard')),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                            // 🎯 [핵심]: 사진 크기에 정확히 일치하도록 Positioned.fill로 오버레이 로딩 표시
+                            if (isLocalLoadingImage)
+                              Positioned.fill(
+                                child: Container(
+                                  color: Colors.black.withOpacity(0.4),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : isOptimizedCard && cardData != null
+                      ? Container(
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.62), 
+                          child: _buildAiStructuredCard(cardData),
+                        )
+                      : isAiText || isAi
+                          ? _buildAiQuestionCard(displayAiText) 
+                          : Container(
+                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.62),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isMe ? const Color(0xFF524582) : Colors.white,
+                                borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(isMe ? 16 : 4), bottomRight: Radius.circular(isMe ? 4 : 16)),
+                                border: isMe ? null : Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: Text(rawText, style: TextStyle(color: isMe ? Colors.white : const Color(0xFF1E2939), fontSize: 14, fontFamily: 'Pretendard', height: 1.4)),
+                            ),
 
               if (!isMe) ...[
                 const SizedBox(width: 6),
