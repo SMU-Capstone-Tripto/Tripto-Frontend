@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tripto/src/common_widgets/error_state_widget.dart';
 import 'package:tripto/src/constants/app_theme.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import '../../../../core/network/auth_storage.dart';
+import '../../../../core/auth_storage.dart';
 import '../../../auth/presentation/login_screen.dart';
 import '../../../home/presentation/home_provider.dart';
 

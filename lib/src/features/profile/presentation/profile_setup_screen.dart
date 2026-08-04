@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../../travel_style/presentation/travel_style_screen.dart';
-import '../../../core/network/auth_storage.dart';
+import '../../../core/auth_storage.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   final String email;
