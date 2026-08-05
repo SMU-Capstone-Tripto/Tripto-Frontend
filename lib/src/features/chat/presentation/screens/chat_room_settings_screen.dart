@@ -17,19 +17,19 @@ class FlatCrownPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     final bodyPath = Path()
-      ..moveTo(0, size.height * 0.3)
-      ..lineTo(size.width * 0.1, size.height * 0.75)
-      ..lineTo(size.width * 0.9, size.height * 0.75)
-      ..lineTo(size.width, size.height * 0.3)
+      ..moveTo(0, size.height * 0.25)
+      ..lineTo(size.width * 0.12, size.height * 0.75)
+      ..lineTo(size.width * 0.88, size.height * 0.75)
+      ..lineTo(size.width, size.height * 0.25)
       ..lineTo(size.width * 0.75, size.height * 0.45)
-      ..lineTo(size.width * 0.5, size.height * 0.18) 
+      ..lineTo(size.width * 0.5, size.height * 0.15) 
       ..lineTo(size.width * 0.25, size.height * 0.45)
       ..close();
     canvas.drawPath(bodyPath, paint);
 
     final barPath = Path()
       ..addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, size.height * 0.84, size.width, size.height * 0.16),
+        Rect.fromLTWH(0, size.height * 0.82, size.width, size.height * 0.18),
         const Radius.circular(1.5),
       ));
     canvas.drawPath(barPath, paint);
@@ -65,29 +65,78 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
   bool _isNotificationOn = true;
   int _myUserId = 2; 
   late String _roomTitle; 
+  List<int> _currentMemberIds = [];
+
+  final Map<int, String> _localUserNames = {};
+  final Map<int, String?> _localUserImages = {};
 
   @override
   void initState() {
     super.initState();
     _roomTitle = widget.title;
+    _currentMemberIds = List.from(widget.activeMemberIds);
+    _localUserNames.addAll(widget.userNamesMap);
+    if (widget.userProfileImagesMap != null) {
+      _localUserImages.addAll(widget.userProfileImagesMap!);
+    }
     _fetchMyProfile();
+    _refreshRoomMembers();
+  }
+
+  // 👥 최신 멤버 목록 및 새 유저의 닉네임/프로필 재동기화
+  Future<void> _refreshRoomMembers() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${AuthStorage.baseUrl}/chat/rooms'),
+        headers: AuthStorage.authHeaders,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> rooms = jsonDecode(utf8.decode(response.bodyBytes));
+        final currentRoom = rooms.firstWhere(
+          (r) => (int.tryParse(r['room_id']?.toString() ?? r['id']?.toString() ?? '') == widget.roomId),
+          orElse: () => null,
+        );
+
+        if (currentRoom != null && currentRoom is Map && mounted) {
+          final List<dynamic>? memberIds = currentRoom['member_ids'] ?? currentRoom['invited_user_ids'];
+          if (memberIds != null) {
+            setState(() {
+              _currentMemberIds = memberIds.map((id) => int.tryParse(id.toString()) ?? 0).where((id) => id > 0).toList();
+            });
+          }
+
+          final dynamic members = currentRoom['members'] ?? currentRoom['user_profiles'] ?? currentRoom['profiles'];
+          if (members is List) {
+            setState(() {
+              for (var m in members) {
+                if (m is Map) {
+                  final int? uId = int.tryParse(m['id']?.toString() ?? m['user_id']?.toString() ?? '');
+                  final String? img = m['profile_image']?.toString() ?? m['profile_img']?.toString();
+                  final String? nick = m['nickname']?.toString() ?? m['name']?.toString();
+                  if (uId != null) {
+                    if (img != null && img.isNotEmpty) _localUserImages[uId] = img;
+                    if (nick != null && nick.isNotEmpty) _localUserNames[uId] = nick;
+                  }
+                }
+              }
+            });
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   List<int> get _cleanActiveMemberIds {
-    return widget.activeMemberIds.where((id) {
-      if (id == -1) return false;
-
-      String rawNick = widget.userNamesMap[id]?.trim() ?? '';
-      rawNick = rawNick.replaceAll('<', '').replaceAll('>', '').replaceAll('(', '').replaceAll(')', '').trim();
-
-      bool isInvalid = rawNick.isEmpty || 
-                       rawNick.contains('대화상대') || 
-                       rawNick.contains('알수없음') || 
-                       rawNick.contains('알 수 없음') || 
-                       RegExp(r'^유저\d+$').hasMatch(rawNick);
-
-      return !isInvalid;
-    }).toList();
+    final members = _currentMemberIds.where((id) => id != -1).toList();
+    
+    if (widget.ownerId != null) {
+      members.sort((a, b) {
+        if (a == widget.ownerId) return -1;
+        if (b == widget.ownerId) return 1;
+        return 0;
+      });
+    }
+    return members;
   }
 
   Future<void> _fetchMyProfile() async {
@@ -186,10 +235,21 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
 
   Future<void> _requestLeaveRoom() async {
     try {
+      final String myNick = _localUserNames[_myUserId] ?? '유저';
+      
+      await http.post(
+        Uri.parse('${AuthStorage.baseUrl}/chat/${widget.roomId}/messages'),
+        headers: AuthStorage.authHeaders,
+        body: jsonEncode({
+          "content": "${myNick}님이 나갔습니다.",
+          "message_type": "system",
+        }),
+      );
+
       final targetUrl = '${AuthStorage.baseUrl}/chat/${widget.roomId}/leave?user_id=$_myUserId';
       final response = await http.delete(Uri.parse(targetUrl), headers: AuthStorage.authHeaders);
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 204) {
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const ChatListScreen()), (route) => false);
       }
@@ -334,6 +394,7 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
   @override
   Widget build(BuildContext context) {
     final cleanMembers = _cleanActiveMemberIds;
+    final bool isMeOwner = (widget.ownerId != null && _myUserId == widget.ownerId);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -363,7 +424,7 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
           const SizedBox(height: 35),
           
           Center(
-            child: _buildCompositeAvatar(cleanMembers, widget.userNamesMap, widget.userProfileImagesMap),
+            child: _buildCompositeAvatar(cleanMembers, _localUserNames, _localUserImages),
           ),
           const SizedBox(height: 25),
           
@@ -388,7 +449,7 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
           
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            child: const Text('채팅방 참여자 목록', style: TextStyle(color: Color(0xFF64748B), fontSize: 14, fontFamily: 'Pretendard', fontWeight: FontWeight.bold)),
+            child: Text('채팅방 참여자 목록 (${cleanMembers.length})', style: const TextStyle(color: Color(0xFF64748B), fontSize: 14, fontFamily: 'Pretendard', fontWeight: FontWeight.bold)),
           ),
           
           Padding(
@@ -398,9 +459,9 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
                 final bool isMe = (id == _myUserId);
                 final bool isOwner = (widget.ownerId != null && id == widget.ownerId); 
                 
-                final String memberName = widget.userNamesMap[id] ?? '유저';
+                final String memberName = _localUserNames[id] ?? '유저';
                 final String shortName = memberName.isNotEmpty ? memberName.substring(0, 1) : '유';
-                final String? rawImgUrl = widget.userProfileImagesMap?[id];
+                final String? rawImgUrl = _localUserImages[id];
                 final String? formattedImgUrl = _formatImgUrl(rawImgUrl);
 
                 return Container(
@@ -450,9 +511,9 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
                           ),
                         ),
                         if (isOwner) ...[
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           CustomPaint(
-                            size: const Size(18, 14), 
+                            size: const Size(16, 16), 
                             painter: FlatCrownPainter(),
                           ),
                         ],
@@ -475,7 +536,6 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
           const SizedBox(height: 15),
           Container(height: 8, color: const Color(0xFFF5F5F5)), 
 
-          // 🎯 [보낸 사진함 연결]: roomId 전달
           _buildSettingTile(
               Icons.image_outlined,
               '보낸 사진함',
@@ -484,12 +544,27 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
               Icons.check_box_outlined,
               '투표 (준비 중)',
               () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VoteTabsScreen()))),
-          _buildSettingTile(
-              Icons.person_add_alt,
-              '친구 초대',
-              () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => FriendInviteScreen(roomId: widget.roomId)));
-              }),
+          
+          if (isMeOwner)
+            _buildSettingTile(
+                Icons.person_add_alt,
+                '친구 초대',
+                () {
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(
+                      builder: (_) => FriendInviteScreen(
+                        roomId: widget.roomId,
+                        existingMemberIds: cleanMembers, // 📌 기존 방 참여자 ID 목록 전달
+                      ),
+                    ),
+                  ).then((res) {
+                    if (res == true) {
+                      _refreshRoomMembers(); // 📌 초대 완료 후 돌아왔을 때 인원 목록 실시간 갱신
+                    }
+                  });
+                }),
+
           _buildSettingTile(Icons.exit_to_app, '채팅방 나가기', _showExitDialog, isDanger: true),
         ],
       ),
