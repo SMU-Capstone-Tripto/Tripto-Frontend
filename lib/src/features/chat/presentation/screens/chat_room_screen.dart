@@ -215,6 +215,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
   }
 
+  // 💡 [핵심 수정]: 과거 내역 불러올 때 itinerary 데이터가 있으면 카드 JSON으로 자동 복원
   Future<void> _fetchChatHistory() async {
     try {
       final targetUrl = '${AuthStorage.baseUrl}/chat/${widget.roomId}/messages';
@@ -275,11 +276,27 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           
           final int msgId = int.tryParse(msgMap['message_id']?.toString() ?? '0') ?? 0;
           final int senderId = int.tryParse(msgMap['sender_id']?.toString() ?? '0') ?? 0;
-          final String content = msgMap['content']?.toString() ?? '';
+          String content = msgMap['content']?.toString() ?? '';
           final String msgType = msgMap['message_type']?.toString() ?? 'text';
           final String? senderImg = msgMap['sender_profile_image']?.toString() ?? msgMap['profile_image']?.toString();
           
-          if (content.trim().isEmpty) continue;
+          final String step = msgMap['step']?.toString() ?? '';
+          final dynamic itinerary = msgMap['itinerary'];
+
+          // 🔧 백엔드에서 itinerary 객체나 step이 넘어오면 카드 형태 JSON으로 재구성
+          if (step == 'optimized' || itinerary != null) {
+            content = jsonEncode({
+              "tripto_card_type": "optimized",
+              "plan_title": msgMap['plan_title'] ?? widget.title,
+              "itinerary": itinerary ?? [],
+              "estimated_cost": msgMap['estimated_cost'] ?? {},
+              "content": content,
+            });
+          }
+
+          final String trimmedContent = content.trim();
+          if (trimmedContent.isEmpty) continue;
+
           if (senderId > 0) {
             _allRoomMembers.add(senderId);
             if (senderImg != null && senderImg.isNotEmpty) {
@@ -287,7 +304,15 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             }
           }
 
-          bool isAiMessageInHistory = (senderId == -1) || content.startsWith('{"tripto_card_type"');
+          final bool isJsonFormat = trimmedContent.startsWith('{') && trimmedContent.endsWith('}');
+          final bool isAiMessageInHistory = (senderId == -1) || 
+                                      step == 'optimized' ||
+                                      itinerary != null ||
+                                      trimmedContent.contains('"tripto_card_type"') || 
+                                      trimmedContent.contains('"itinerary"') || 
+                                      trimmedContent.contains('"plan_title"') ||
+                                      (isJsonFormat && (trimmedContent.contains('optimized') || trimmedContent.contains('step')));
+
           int mappedSenderId = senderId;
           bool mappedIsMe = (senderId == _myUserId);
 
@@ -407,7 +432,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           return;
         }
 
-        bool isAi = (senderId == -1) || content.startsWith('{"tripto_card_type"');
+        bool isAi = (senderId == -1) || content.contains('"tripto_card_type"') || content.contains('"itinerary"');
         int mappedSenderId = isAi ? -1 : senderId;
 
         String formattedText = content;
@@ -478,6 +503,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           setState(() {
             _userLastReadMap[readingUserId] = lastReadId;
             _allRoomMembers.add(readingUserId);
+          });
+        }
+      }
+      else if (type == 'delete_message' || type == 'unsend_message') {
+        final int deletedMsgId = int.tryParse(payload['message_id']?.toString() ?? '0') ?? 0;
+        if (mounted && deletedMsgId > 0) {
+          setState(() {
+            _messages.removeWhere((m) => m['message_id'] == deletedMsgId);
           });
         }
       }
@@ -613,19 +646,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 'message_type': 'image',
                 'time': tempTimeStr,
               };
-            } else {
-              _messages.add({
-                'message_id': null,
-                'sender_id': _myUserId,
-                'isMe': true,
-                'text': fileUrl,
-                'message_type': 'image',
-                'time': tempTimeStr,
-              });
             }
           });
           _scrollToBottom();
         }
+      } else {
+        throw Exception('서버 전송 실패 (${sendImageRes.statusCode})');
       }
     } catch (e) {
       debugPrint('❌ 사진 전송 프로세스 에러: $e');
@@ -798,156 +824,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     );
   }
 
-  Future<void> _fireAiAgentStream(String cleanMessage) async {
-    if (_isAiStreaming) return;
-    setState(() {
-      _isAiStreaming = true;
-      _currentAiStatus = "AI 분석 요청 중...";
-    });
-
-    final int tempMsgId = -999; 
-    final String tempTimeStr = _formatTime(DateTime.now());
-
-    setState(() {
-      _messages.add(<String, dynamic>{
-        'message_id': tempMsgId,
-        'sender_id': -1, 
-        'isMe': false,
-        'text': "🔍 답변을 생성하고 있습니다...", 
-        'message_type': 'text',
-        'time': tempTimeStr,
-      });
-    });
-    _scrollToBottom();
-
-    try {
-      final client = http.Client();
-      final request = http.Request('POST', Uri.parse('${AuthStorage.baseUrl}/agent/chat'));
-      request.headers.addAll(AuthStorage.authHeaders);
-      request.body = jsonEncode({
-        "message": cleanMessage,
-        "room_id": widget.roomId, 
-      });
-
-      final response = await client.send(request);
-
-      if (response.statusCode != 200) {
-        throw Exception('서버 응답 오류 (코드: ${response.statusCode})');
-      }
-
-      String accumulatedText = "";
-      Map<String, dynamic>? finalOptimizedData;
-
-      final streamLines = response.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter());
-
-      await for (final line in streamLines) {
-        if (line.startsWith('data: ')) {
-          final dataContent = line.substring(6).trim();
-          if (dataContent == '[DONE]') break;
-
-          try {
-            if (dataContent.startsWith('{') && dataContent.endsWith('}')) {
-              final payload = jsonDecode(dataContent);
-              final String type = payload['type'] ?? '';
-
-              if (type == 'status') {
-                if (mounted) setState(() => _currentAiStatus = payload['message']);
-              } 
-              else if (type == 'result') {
-                final String step = payload['step'] ?? '';
-                accumulatedText = payload['content'] ?? '';
-
-                if (step == 'vote_confirm') {
-                  if (mounted) setState(() => _showVoteConfirmButtons = true); 
-                } 
-                else if (step == 'optimized' || payload['itinerary'] != null) {
-                  finalOptimizedData = payload;
-                }
-
-                if (mounted) {
-                  setState(() {
-                    final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-                    if (idx != -1) _messages[idx]['text'] = accumulatedText;
-                  });
-                  _scrollToBottom();
-                }
-              }
-              else if (type == 'error') {
-                final String errMsg = payload['message'] ?? payload['content'] ?? '응답 중 오류가 발생했습니다.';
-                accumulatedText = "⚠️ $errMsg";
-                if (mounted) {
-                  setState(() {
-                    final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-                    if (idx != -1) _messages[idx]['text'] = accumulatedText;
-                  });
-                }
-              }
-            } else {
-              accumulatedText = dataContent;
-              if (mounted) {
-                setState(() {
-                  final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-                  if (idx != -1) _messages[idx]['text'] = accumulatedText;
-                });
-              }
-            }
-          } catch (_) {
-            accumulatedText = dataContent;
-            if (mounted) {
-              setState(() {
-                final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-                if (idx != -1) _messages[idx]['text'] = accumulatedText;
-              });
-            }
-          }
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-          if (idx != -1) {
-            _messages[idx]['message_id'] = DateTime.now().millisecondsSinceEpoch; 
-            _messages[idx]['time'] = _formatTime(DateTime.now());
-            if (finalOptimizedData != null) {
-              _messages[idx]['text'] = jsonEncode({
-                "tripto_card_type": "optimized",
-                "plan_title": finalOptimizedData!['plan_title'] ?? widget.title,
-                "itinerary": finalOptimizedData!['itinerary'] ?? [],
-                "estimated_cost": finalOptimizedData!['estimated_cost'] ?? {},
-                "content": accumulatedText,
-              });
-            } else {
-              _messages[idx]['text'] = accumulatedText;
-            }
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('AI 에이전트 장애: $e');
-      if (mounted) {
-        setState(() {
-          final int idx = _messages.indexWhere((m) => m['message_id'] == tempMsgId);
-          if (idx != -1) {
-            _messages[idx]['text'] = "⚠️ 응답 실패, 다시 시도해 주세요.";
-          }
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('AI 응답 실패: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isAiStreaming = false;
-          _currentAiStatus = null;
-        });
-      }
-    }
-  }
-
   void _insertAiTag() {
     const tag = '@트립토 ';
     final currentText = _msgController.text;
@@ -1008,8 +884,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       _allRoomMembers.add(_myUserId); 
     });
     _scrollToBottom();
-
-    // NOTE: 백엔드가 trigger_ai 수신 시 AI 응답을 브로드캐스트하므로 프론트에서의 _fireAiAgentStream 중복 호출은 제거되었습니다.
   }
 
   bool _isInternalVoteWord(String text) {
@@ -1060,6 +934,43 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     
     final RegExp reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
     return intVal.toString().replaceAllMapped(reg, (Match m) => '${m[1]},');
+  }
+
+  Future<void> _unsendMessage(Map<String, dynamic> msg) async {
+    final int? msgId = msg['message_id'];
+
+    if (msgId == null || msgId <= 0) {
+      setState(() => _messages.remove(msg));
+      return;
+    }
+
+    try {
+      final response = await http.delete(
+        Uri.parse('${AuthStorage.baseUrl}/chat/${widget.roomId}/messages/$msgId'),
+        headers: AuthStorage.authHeaders,
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        setState(() => _messages.remove(msg));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('메시지 보내기가 취소되었습니다.')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('보내기 취소 실패 (${response.statusCode})')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('보내기 취소 오류: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -1344,16 +1255,19 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     Map<String, dynamic>? cardData;
     String displayAiText = rawText;
 
-    if (rawText.startsWith('{"tripto_card_type"') || rawText.startsWith('{"plan_title"')) {
+    final String trimmedText = rawText.trim();
+    if (trimmedText.startsWith('{') && trimmedText.endsWith('}')) {
       try {
-        final parsed = jsonDecode(rawText);
-        final String cardType = parsed['tripto_card_type'] ?? parsed['step'] ?? '';
-        if (cardType == 'optimized' || parsed['itinerary'] != null) {
-          cardData = parsed;
-          isOptimizedCard = true;
-        } else if (cardType == 'text') {
-          displayAiText = parsed['content'] ?? '';
-          isAiText = true;
+        final parsed = jsonDecode(trimmedText);
+        if (parsed is Map<String, dynamic>) {
+          final String cardType = parsed['tripto_card_type'] ?? parsed['step'] ?? '';
+          if (cardType == 'optimized' || parsed['itinerary'] != null) {
+            cardData = parsed;
+            isOptimizedCard = true;
+          } else if (cardType == 'text') {
+            displayAiText = parsed['content'] ?? displayAiText;
+            isAiText = true;
+          }
         }
       } catch (_) {}
     }
@@ -1886,18 +1800,26 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 );
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.cleaning_services_rounded, color: Color(0xFF64748B)),
+              title: const Text('나에게서만 삭제', style: TextStyle(fontFamily: 'Pretendard', fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _messages.remove(msg);
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('내 화면에서 메시지가 삭제되었습니다.')),
+                );
+              },
+            ),
             if (isMyMessage)
               ListTile(
-                leading: const Icon(Icons.delete_outline_rounded, color: Color(0xFFFF4D4D)),
-                title: const Text('삭제 (보내기 취소)', style: TextStyle(fontFamily: 'Pretendard', fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFFFF4D4D))),
+                leading: const Icon(Icons.undo_rounded, color: Color(0xFFFF4D4D)),
+                title: const Text('모두에게서 보내기 취소', style: TextStyle(fontFamily: 'Pretendard', fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFFFF4D4D))),
                 onTap: () {
                   Navigator.pop(context);
-                  setState(() {
-                    _messages.remove(msg);
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('메시지가 삭제되었습니다.')),
-                  );
+                  _unsendMessage(msg);
                 },
               ),
           ],
