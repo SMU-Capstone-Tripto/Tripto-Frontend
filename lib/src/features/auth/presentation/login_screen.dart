@@ -4,10 +4,9 @@ import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
-import '../../../core/network/token_storage.dart';
 import 'package:go_router/go_router.dart';
 
-// 🔥 [근본 해결]: 채팅 레이어가 열쇠를 빌려 쓰는 AuthStorage 임포트 추가
+// 🔥 인증 전용 단일 스토리지 임포트
 import '../../../core/auth_storage.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -23,6 +22,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _pwController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // 로그인 화면 진입 시 기존 토큰 복원 시도
+    AuthStorage.init();
+  }
 
   void _navigateTo(Widget page) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => page));
@@ -47,8 +53,9 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // 💡 TokenStorage.baseUrl 대신 AuthStorage.baseUrl로 단일화
       final response = await http.post(
-        Uri.parse('${TokenStorage.baseUrl}/auth/login'),
+        Uri.parse('${AuthStorage.baseUrl}/auth/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'email': email,
@@ -61,14 +68,15 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
 
-        // 🔥 [근본 해결 1]: 일반 로그인 성공 시 AuthStorage에도 토큰 리얼타임 수혈 동기화
-        AuthStorage.accessToken = responseData['access_token'];
-        AuthStorage.refreshToken = responseData['refresh_token'];
+        final String accessToken = responseData['access_token'] ?? '';
+        final String refreshToken = responseData['refresh_token'] ?? '';
+        final String userId = responseData['user_id']?.toString() ?? '';
 
-        await TokenStorage.saveTokens(
-          accessToken: responseData['access_token'],
-          refreshToken: responseData['refresh_token'],
-          userId: responseData['user_id']?.toString() ?? '',
+        // 🔥 메모리 수혈 + 저장소 저장을 한 번에 처리
+        await AuthStorage.setTokens(
+          access: accessToken,
+          refresh: refreshToken,
+          userId: userId,
         );
 
         _goToMain();
@@ -81,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('서버 통신 중 오류가 발생했습니다.')),
+        SnackBar(content: Text('서버 통신 중 오류가 발생했습니다: $e')),
       );
     } finally {
       if (mounted) {
@@ -98,22 +106,17 @@ class _LoginScreenState extends State<LoginScreen> {
           initialUrl: url,
           onTokenReceived:
               (accessToken, refreshToken, email, isProfileComplete) async {
-            // 🔥 [근본 해결 2]: 소셜 로그인 성공 및 웹뷰 콜백 수신 시 AuthStorage에 토큰 수혈 동기화
-            AuthStorage.accessToken = accessToken;
-            AuthStorage.refreshToken = refreshToken;
-
-            await TokenStorage.saveTokens(
-              accessToken: accessToken,
-              refreshToken: refreshToken,
-              userId: email, // 이메일을 userId로 저장 (필요에 따라 변경 가능)
+            // 🔥 소셜 로그인 토큰 수혈 및 저장 일원화
+            await AuthStorage.setTokens(
+              access: accessToken,
+              refresh: refreshToken,
+              userId: email,
             );
 
             if (mounted) {
-              // 🛠️ 정밀 필터링: 이미 닉네임 작성을 마친 기존 유저라면 메인 홈으로 바로 진입!
               if (isProfileComplete) {
                 _goToMain();
               } else {
-                // 프로필 설정 화면 주소가 '/profile-setup' 이라고 가정
                 context.go('/profile-setup', extra: {
                   'email': email,
                   'password': '',
@@ -228,13 +231,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           _buildSnsButton(
                             'assets/images/kakao_logo.png',
                             () => _openSocialLogin(
-                                '${TokenStorage.baseUrl}/auth/kakao/login'),
+                                '${AuthStorage.baseUrl}/auth/kakao/login'),
                           ),
                           const SizedBox(width: 30),
                           _buildSnsButton(
                             'assets/images/google_logo.png',
                             () => _openSocialLogin(
-                                '${TokenStorage.baseUrl}/auth/google/login'),
+                                '${AuthStorage.baseUrl}/auth/google/login'),
                           ),
                         ],
                       ),
@@ -469,9 +472,8 @@ class _SocialLoginWebViewState extends State<SocialLoginWebView> {
                 final String? refreshToken = tokenData['refresh_token'];
 
                 if (accessToken != null && refreshToken != null) {
-                  // 내 정보 가져오기
                   final userRes = await http.get(
-                    Uri.parse('${TokenStorage.baseUrl}/auth/me'),
+                    Uri.parse('${AuthStorage.baseUrl}/auth/me'),
                     headers: {'Authorization': 'Bearer $accessToken'},
                   );
 

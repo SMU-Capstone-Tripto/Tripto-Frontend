@@ -31,11 +31,31 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
   @override
   void initState() {
     super.initState();
-    Future.microtask(() {
+    Future.microtask(() async {
+      await LocalDeletionStorage.init();
       if (mounted) {
         ref.read(chatProvider.notifier).fetchRooms();
       }
     });
+  }
+
+  String _formatCleanLastMessage(String rawText) {
+    if (rawText.isEmpty) return '';
+    String text = rawText;
+    if (text.contains('[REPLY_DATA]')) {
+      final parts = text.split('[REPLY_DATA]');
+      if (parts.length >= 3) {
+        text = parts[2];
+      }
+    }
+    String trimmed = text.trim();
+    if (trimmed.startsWith('http') && (trimmed.contains('.jpg') || trimmed.contains('.png') || trimmed.contains('.jpeg') || trimmed.contains('s3.amazonaws') || trimmed.contains('presigned'))) {
+      return '사진을 보냈습니다.';
+    }
+    if (trimmed.startsWith('{"tripto_card_type"') || trimmed.contains('"itinerary"')) {
+      return '여행 일정을 작성했습니다.';
+    }
+    return trimmed;
   }
 
   Future<void> _leaveRoomSilently(int roomId) async {
@@ -277,6 +297,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
         ),
       ),
     ).then((_) {
+      if (mounted) {
+        setState(() {});
+      }
       ref.read(chatProvider.notifier).fetchRooms();
     });
   }
@@ -406,10 +429,20 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
 
     final allRooms = ref.watch(sortedChatProvider);
 
-    List<ChatModel> filteredRooms = allRooms.where((room) {
-      final title = room.name.toLowerCase();
-      return title.contains(_searchQuery.toLowerCase());
-    }).toList();
+    // 🧹 [수정]: 동일한 roomId를 가진 채팅방 중복 생성 방지 (Deduplication)
+    final Set<int> seenRoomIds = {};
+    List<ChatModel> filteredRooms = [];
+
+    for (var room in allRooms) {
+      final int rId = int.tryParse(room.id.toString()) ?? 0;
+      if (rId > 0 && !seenRoomIds.contains(rId)) {
+        seenRoomIds.add(rId);
+        final title = room.name.toLowerCase();
+        if (title.contains(_searchQuery.toLowerCase())) {
+          filteredRooms.add(room);
+        }
+      }
+    }
 
     filteredRooms.sort((a, b) {
       final int aRoomId = int.tryParse(a.id.toString()) ?? 0;
@@ -589,6 +622,10 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
     final bool isPinned = _pinnedRoomIds.contains(parsedRoomId);
     final bool isMuted = _mutedRoomIds.contains(parsedRoomId);
 
+    final String rawLastMsg = LocalDeletionStorage.hasOverride(parsedRoomId)
+        ? (LocalDeletionStorage.getRoomLastMessage(parsedRoomId) ?? '')
+        : room.cleanLastMessage;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -666,7 +703,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
                         children: [
                           Expanded(
                             child: Text(
-                              room.cleanLastMessage, 
+                              _formatCleanLastMessage(rawLastMsg), 
                               style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontFamily: 'Pretendard'), 
                               maxLines: 1, 
                               overflow: TextOverflow.ellipsis,

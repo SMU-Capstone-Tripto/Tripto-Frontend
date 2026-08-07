@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../../../core/network/auth_storage.dart';
+import '../../../core/auth_storage.dart';
 
 class FriendRequestScreen extends StatefulWidget {
   const FriendRequestScreen({super.key});

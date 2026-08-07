@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../../../core/network/auth_storage.dart'; // 공통 URL 저장소 경로 연동
+import '../../../core/auth_storage.dart'; // 공통 URL 저장소 경로 연동
 
 /// 사용자 비밀번호 찾기 및 즉시 재설정 시퀀스 위젯.
 class ForgotPasswordScreen extends StatefulWidget {
