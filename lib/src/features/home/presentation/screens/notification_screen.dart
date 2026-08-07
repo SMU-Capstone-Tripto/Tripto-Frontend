@@ -2,9 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart'; // 💡 GoRouter 추가
 import 'package:tripto/src/constants/app_theme.dart';
 import 'package:tripto/src/features/home/domain/notification_model.dart';
-import '../../presentation/screens/navigation_screen.dart';
 import '../notification_provider.dart';
 
 class NotificationScreen extends ConsumerWidget {
@@ -17,10 +17,10 @@ class NotificationScreen extends ConsumerWidget {
     final notifier = ref.read(notificationProvider.notifier);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F5FA), // 💡 전체 배경색 연하게 변경
+      backgroundColor: const Color(0xFFF6F5FA),
       body: Column(
         children: [
-          // ── 💡 그라데이션 헤더 ──
+          // ── 그라데이션 헤더 ──
           Container(
             padding: EdgeInsets.fromLTRB(
                 20, MediaQuery.of(context).padding.top + 16, 20, 24),
@@ -68,7 +68,6 @@ class NotificationScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 20),
-                // 필터 탭 (헤더 안으로 이동하여 반투명하게 처리)
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -102,16 +101,33 @@ class NotificationScreen extends ConsumerWidget {
               data: (notifs) {
                 if (notifs.isEmpty) return const _EmptyState();
 
-                // 💡 ListView.separated 대신 여백이 있는 그림자 카드로 변경
                 return ListView.builder(
                   padding: const EdgeInsets.only(top: 16, bottom: 40),
                   itemCount: notifs.length,
-                  itemBuilder: (_, i) => _NotifItem(
-                    notif: notifs[i],
-                    onTap: () => notifier.read(notifs[i].id),
-                    onAccept: () => notifier.acceptFriend(notifs[i].id),
-                    onDecline: () => notifier.declineFriend(notifs[i].id),
-                  ),
+                  itemBuilder: (_, i) {
+                    final notif = notifs[i];
+                    return _NotifItem(
+                      notif: notif,
+                      onTap: () {
+                        // 💡 3단계: 읽음 처리 후 화면 이동
+                        notifier.read(notif.id);
+
+                        switch (notif.type) {
+                          case NotificationType.friendRequest:
+                            // 친구 요청은 해당 카드에서 버튼으로 처리하므로 패스
+                            break;
+                          case NotificationType.chat:
+                            context.go('/chat'); // 채팅 탭으로 슝!
+                            break;
+                          case NotificationType.schedule:
+                            context.go('/schedule'); // 일정 탭으로 슝!
+                            break;
+                        }
+                      },
+                      onAccept: () => notifier.acceptFriend(notif.id),
+                      onDecline: () => notifier.declineFriend(notif.id),
+                    );
+                  },
                 );
               },
             ),
@@ -152,7 +168,7 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-// ── 알림 아이템 (새로운 카드 디자인) ──
+// ── 알림 아이템 ──
 class _NotifItem extends StatelessWidget {
   final NotificationModel notif;
   final VoidCallback onTap;
@@ -184,13 +200,12 @@ class _NotifItem extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: notif.isRead ? Colors.white.withOpacity(0.6) : Colors.white,
-          borderRadius: BorderRadius.circular(24), // 💡 완전 둥근 모서리
+          borderRadius: BorderRadius.circular(24),
           boxShadow: notif.isRead
               ? []
               : [
                   BoxShadow(
-                    color: const Color(0xFF6144B0)
-                        .withOpacity(0.04), // 💡 부드러운 보라빛 그림자
+                    color: const Color(0xFF6144B0).withOpacity(0.04),
                     blurRadius: 16,
                     offset: const Offset(0, 4),
                   )
