@@ -4,107 +4,111 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tripto/src/constants/app_theme.dart';
 import 'package:tripto/src/features/home/domain/notification_model.dart';
-import 'package:tripto/src/features/home/presentation/notification_provider.dart';
+import '../../presentation/screens/navigation_screen.dart';
+import '../notification_provider.dart';
 
 class NotificationScreen extends ConsumerWidget {
   const NotificationScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 💡 이제 notifs는 AsyncValue<List<NotificationModel>> 타입입니다.
     final notifsAsync = ref.watch(filteredNotifProvider);
     final filter = ref.watch(notifFilterProvider);
     final notifier = ref.read(notificationProvider.notifier);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFF6F5FA), // 💡 전체 배경색 연하게 변경
       body: Column(
         children: [
-          // ── 앱바 ──
+          // ── 💡 그라데이션 헤더 ──
           Container(
-            color: Colors.white,
             padding: EdgeInsets.fromLTRB(
-                20, MediaQuery.of(context).padding.top + 12, 20, 16),
-            child: Row(
+                20, MediaQuery.of(context).padding.top + 16, 20, 24),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF8A6BFF), Color(0xFF6144B0)],
+              ),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+            ),
+            child: Column(
               children: [
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: const Icon(Icons.arrow_back_ios,
-                      size: 18, color: AppColors.textSecondary),
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: const Icon(Icons.arrow_back_ios,
+                          size: 20, color: Colors.white),
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text('알림',
+                          style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white)),
+                    ),
+                    GestureDetector(
+                      onTap: notifier.readAll,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text('모두 읽음',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text('알림',
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1E2939))),
-                ),
-                TextButton(
-                  onPressed: notifier.readAll,
-                  child: const Text('모두 읽음',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primary)),
+                const SizedBox(height: 20),
+                // 필터 탭 (헤더 안으로 이동하여 반투명하게 처리)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _FilterChip(
+                        label: '전체',
+                        active: filter == null,
+                        onTap: () =>
+                            ref.read(notifFilterProvider.notifier).state = null,
+                      ),
+                      ...NotificationType.values.map((t) => _FilterChip(
+                            label: t.label,
+                            active: filter == t,
+                            onTap: () => ref
+                                .read(notifFilterProvider.notifier)
+                                .state = t,
+                          )),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
 
-          // ── 필터 탭 ──
-          Container(
-            color: Colors.white,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Row(
-                children: [
-                  // 전체
-                  _FilterChip(
-                    label: '전체',
-                    active: filter == null,
-                    onTap: () =>
-                        ref.read(notifFilterProvider.notifier).state = null,
-                  ),
-                  // 타입별 (enum values 순회)
-                  ...NotificationType.values.map((t) => _FilterChip(
-                        label: t.label, // NotificationType 확장에 label이 있다고 가정
-                        active: filter == t,
-                        onTap: () =>
-                            ref.read(notifFilterProvider.notifier).state = t,
-                      )),
-                ],
-              ),
-            ),
-          ),
-
-          // ── 알림 목록 (AsyncValue 상태 처리) ──
+          // ── 알림 목록 ──
           Expanded(
             child: notifsAsync.when(
-              // 1. 로딩 중일 때
               loading: () => const Center(
                   child: CircularProgressIndicator(color: AppColors.primary)),
-              // 2. 에러가 났을 때
-              error: (err, st) => Center(
-                child: Text('알림을 불러오지 못했습니다.\n$err',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: AppColors.textSecondary)),
-              ),
-              // 3. 데이터를 성공적으로 받아왔을 때
+              error: (err, st) => Center(child: Text('오류 발생:\n$err')),
               data: (notifs) {
-                if (notifs.isEmpty) {
-                  return const _EmptyState();
-                }
+                if (notifs.isEmpty) return const _EmptyState();
 
-                return ListView.separated(
+                // 💡 ListView.separated 대신 여백이 있는 그림자 카드로 변경
+                return ListView.builder(
+                  padding: const EdgeInsets.only(top: 16, bottom: 40),
                   itemCount: notifs.length,
-                  separatorBuilder: (_, __) => const Divider(
-                      height: 1, color: Color(0xFFF0EEFF), indent: 20),
                   itemBuilder: (_, i) => _NotifItem(
                     notif: notifs[i],
                     onTap: () => notifier.read(notifs[i].id),
-                    // 💡 API와 연결된 프로바이더의 함수 호출!
                     onAccept: () => notifier.acceptFriend(notifs[i].id),
                     onDecline: () => notifier.declineFriend(notifs[i].id),
                   ),
@@ -118,7 +122,7 @@ class NotificationScreen extends ConsumerWidget {
   }
 }
 
-// ── 필터 칩 ──
+// ── 반투명 필터 칩 ──
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool active;
@@ -131,24 +135,24 @@ class _FilterChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(right: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? AppColors.primary : AppColors.primaryLight,
+          color: active ? Colors.white : Colors.white.withOpacity(0.15),
           borderRadius: BorderRadius.circular(99),
         ),
         child: Text(label,
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: active ? Colors.white : AppColors.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: active ? AppColors.primary : Colors.white.withOpacity(0.8),
             )),
       ),
     );
   }
 }
 
-// ── 알림 아이템 ──
+// ── 알림 아이템 (새로운 카드 디자인) ──
 class _NotifItem extends StatelessWidget {
   final NotificationModel notif;
   final VoidCallback onTap;
@@ -160,16 +164,13 @@ class _NotifItem extends StatelessWidget {
       required this.onAccept,
       required this.onDecline});
 
-  // 타입별 아이콘/색상
   static const _configs = {
     NotificationType.friendRequest: _Config(
         Icons.person_add_outlined, Color(0xFFEDE9FF), Color(0xFF6144B0)),
-    NotificationType.dday: _Config(
-        Icons.calendar_today_outlined, Color(0xFFFFF0F0), Color(0xFFD93030)),
     NotificationType.chat: _Config(
         Icons.chat_bubble_outline, Color(0xFFE6F1FB), Color(0xFF185FA5)),
-    NotificationType.trip:
-        _Config(Icons.flight_outlined, Color(0xFFE1F5EE), Color(0xFF0F6E56)),
+    NotificationType.schedule: _Config(
+        Icons.event_note_outlined, Color(0xFFE1F5EE), Color(0xFF0F6E56)),
   };
 
   @override
@@ -179,76 +180,79 @@ class _NotifItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        color:
-            notif.isRead ? Colors.white : AppColors.primary.withOpacity(0.04),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: notif.isRead ? Colors.white.withOpacity(0.6) : Colors.white,
+          borderRadius: BorderRadius.circular(24), // 💡 완전 둥근 모서리
+          boxShadow: notif.isRead
+              ? []
+              : [
+                  BoxShadow(
+                    color: const Color(0xFF6144B0)
+                        .withOpacity(0.04), // 💡 부드러운 보라빛 그림자
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 읽지 않음 점
             Container(
               width: 6,
               height: 6,
-              margin: const EdgeInsets.only(top: 18, right: 6),
+              margin: const EdgeInsets.only(top: 18, right: 8),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: notif.isRead ? Colors.transparent : AppColors.primary,
-              ),
+                  shape: BoxShape.circle,
+                  color: notif.isRead ? Colors.transparent : AppColors.primary),
             ),
-
-            // 아이콘
             Container(
-              width: 42,
-              height: 42,
+              width: 46,
+              height: 46,
               decoration:
                   BoxDecoration(color: cfg.bgColor, shape: BoxShape.circle),
               child: Icon(cfg.icon, size: 20, color: cfg.color),
             ),
-            const SizedBox(width: 12),
-
-            // 텍스트
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 메시지 (이름 굵게)
                   RichText(
                     text: TextSpan(
                       style: TextStyle(
-                        fontSize: 13,
-                        color: const Color(0xFF1E2939),
-                        fontWeight:
-                            notif.isRead ? FontWeight.w400 : FontWeight.w600,
-                      ),
+                          fontSize: 14,
+                          color: const Color(0xFF1E2939),
+                          fontWeight:
+                              notif.isRead ? FontWeight.w500 : FontWeight.w700),
                       children: [
                         TextSpan(
                             text: notif.senderName,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
-                        TextSpan(text: notif.message),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary)),
+                        TextSpan(text: ' ${notif.message}'),
                       ],
                     ),
                   ),
-
-                  // 친구 요청 버튼
                   if (notif.hasFriendAction)
                     Padding(
-                      padding: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.only(top: 10),
                       child: Row(
                         children: [
                           _ActionBtn(
                               label: '수락', primary: true, onTap: onAccept),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 8),
                           _ActionBtn(
                               label: '거절', primary: false, onTap: onDecline),
                         ],
                       ),
                     ),
-
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(notif.time,
                       style: const TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
+                          fontSize: 11, color: Color(0xFFC0BBDE))),
                 ],
               ),
             ),
@@ -271,26 +275,23 @@ class _ActionBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: primary ? AppColors.primary : AppColors.primaryLight,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Text(label,
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: primary ? Colors.white : AppColors.textSecondary,
-            )),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: primary ? Colors.white : AppColors.primary)),
       ),
     );
   }
 }
 
-// 빈 상태
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
-
   @override
   Widget build(BuildContext context) {
     return const Center(
@@ -298,10 +299,10 @@ class _EmptyState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.notifications_none_outlined,
-              size: 48, color: AppColors.textSecondary),
+              size: 48, color: Color(0xFFC0BBDE)),
           SizedBox(height: 12),
           Text('알림이 없습니다',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+              style: TextStyle(fontSize: 14, color: Color(0xFFC0BBDE))),
         ],
       ),
     );

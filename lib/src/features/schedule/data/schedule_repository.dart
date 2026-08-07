@@ -50,17 +50,20 @@ class ScheduleRepository {
     }
   }
 
-  // 1. 메모 생성 (POST)
-  Future<void> createMemo(int scheduleId, String content) async {
+  // 1. 메모 생성 (POST) - 새로 만들어진 메모의 ID(int)를 반환하도록 수정!
+  Future<int> createMemo(int scheduleId, String content) async {
     try {
-      await _dio.post(
-        '/memos',
+      final res = await _dio.post(
+        '/memos', // 💡 만약 307이나 404 에러가 나면 '/memos/' 처럼 끝에 슬래시를 붙여보세요!
         data: {
           'schedule_id': scheduleId,
-          'content': content, // Swagger에 정의된 키값으로 변경하세요
+          'content': content,
         },
       );
+      // 백엔드가 준 응답 데이터에서 'id'를 뽑아냅니다.
+      return int.parse(res.data['id'].toString());
     } catch (e) {
+      print('🚨 API 에러(createMemo): $e');
       throw Exception('메모 생성 실패: $e');
     }
   }
@@ -71,10 +74,11 @@ class ScheduleRepository {
       await _dio.patch(
         '/memos/$memoId',
         data: {
-          'content': content, // Swagger에 정의된 키값으로 변경하세요
+          'content': content,
         },
       );
     } catch (e) {
+      print('🚨 API 에러(updateMemo): $e');
       throw Exception('메모 수정 실패: $e');
     }
   }
@@ -85,6 +89,23 @@ class ScheduleRepository {
       await _dio.delete('/memos/$memoId');
     } catch (e) {
       throw Exception('메모 삭제 실패: $e');
+    }
+  }
+
+  // ── 💡 새로 추가: 특정 스케줄의 최신 메모 가져오기 ──
+  Future<String> getScheduleMemo(String scheduleId) async {
+    try {
+      final res = await _dio.get('/schedules/$scheduleId');
+
+      final memos = res.data['memos'] as List?;
+      if (memos != null && memos.isNotEmpty) {
+        // 메모가 여러 개일 경우 가장 첫 번째(또는 마지막) 메모의 내용을 가져옵니다.
+        return memos.last['content'] ?? '';
+      }
+      return '';
+    } catch (e) {
+      print('단건 메모 조회 에러: $e');
+      return '';
     }
   }
 }

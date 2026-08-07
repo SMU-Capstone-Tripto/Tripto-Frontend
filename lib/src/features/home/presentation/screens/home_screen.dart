@@ -22,10 +22,11 @@ class HomeScreen extends ConsumerWidget {
     final unreadCount = ref.watch(unreadCountProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      // 💡 1. 전체 배경색을 트렌디한 연한 보라빛 회백색으로 변경
+      backgroundColor: const Color(0xFFF6F5FA),
       body: CustomScrollView(
         slivers: [
-          // ── 상단 헤더 (여행 정보) ──
+          // ── 상단 그라데이션 헤더 (여행 정보) ──
           SliverToBoxAdapter(
             child: _HomeHeader(
               trip: trip,
@@ -39,27 +40,27 @@ class HomeScreen extends ConsumerWidget {
           // ── 친구 섹션 타이틀 ──
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 14),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
                       Container(
-                        width: 3,
+                        width: 4,
                         height: 18,
                         decoration: BoxDecoration(
-                          color: AppColors.primary,
+                          color: const Color(0xFF8A6BFF), // 💡 포인트 컬러
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       const Text(
                         '친구',
                         style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800, // 💡 제목은 w700 이상
+                          color: Color(0xFF1E2939),
                         ),
                       ),
                     ],
@@ -97,25 +98,22 @@ class HomeScreen extends ConsumerWidget {
                     sliver: SliverList.builder(
                       itemCount: friends.length,
                       itemBuilder: (_, i) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
+                        padding:
+                            const EdgeInsets.only(bottom: 12), // 💡 카드 간격 조절
                         child: FriendListItem(
                           friend: friends[i],
-                          // 💡 Future<bool>을 반환하도록 async 코드로 변경 및 friendshipId 사용!
                           onDelete: () async {
                             try {
-                              // 서버와 통신하여 삭제를 요청합니다.
                               await ref
                                   .read(friendListProvider.notifier)
-                                  .removeFriend(friends[i]
-                                      .friendshipId); // friendId가 아니라 friendshipId여야 합니다!
-                              return true; // 삭제 성공 -> 화면에서 스르륵 사라짐
+                                  .removeFriend(friends[i].friendshipId);
+                              return true;
                             } catch (e) {
-                              // 삭제 실패 시 에러 문구를 띄우고
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(content: Text('삭제 실패: $e')));
                               }
-                              return false; // 삭제 실패 -> 스와이프된 카드가 제자리로 돌아옴
+                              return false;
                             }
                           },
                         ),
@@ -124,7 +122,7 @@ class HomeScreen extends ConsumerWidget {
                   ),
           ),
 
-          const SliverPadding(padding: EdgeInsets.only(bottom: 20)),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
         ],
       ),
     );
@@ -148,12 +146,22 @@ class _HomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFF4E48AF),
+      // 💡 2. 그라데이션 및 부드러운 라운드 처리 적용
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF8A6BFF), Color(0xFF6144B0)],
+        ),
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(32),
+        ),
+      ),
       padding: EdgeInsets.fromLTRB(
         20,
         MediaQuery.of(context).padding.top + 16,
         20,
-        28,
+        32, // 하단 라운드를 위해 패딩을 약간 늘림
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -168,20 +176,19 @@ class _HomeHeader extends StatelessWidget {
                   Text(
                     'Tripto',
                     style: TextStyle(
-                      fontSize: 22,
+                      fontSize: 24,
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
-                      letterSpacing: 1.5,
-                      fontFamily: 'Pretendard',
+                      letterSpacing: 1.2,
                     ),
                   ),
-                  SizedBox(height: 2),
+                  SizedBox(height: 4),
                   Text(
                     '안녕하세요, 여행자님!',
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400, // 💡 본문 느낌은 w400
                       color: Colors.white70,
-                      fontFamily: 'Pretendard',
                     ),
                   ),
                 ],
@@ -194,10 +201,13 @@ class _HomeHeader extends StatelessWidget {
                     icon: const Icon(
                       Icons.notifications_outlined,
                       color: Colors.white,
+                      size: 26,
                     ),
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.white.withOpacity(0.15),
-                      shape: const CircleBorder(),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14), // 💡 투명한 둥근 버튼
+                      ),
                     ),
                   ),
                   if (unreadCount > 0)
@@ -208,7 +218,7 @@ class _HomeHeader extends StatelessWidget {
                         width: 8,
                         height: 8,
                         decoration: const BoxDecoration(
-                          color: Color(0xFFD93030),
+                          color: Color(0xFFFF5252), // 더 화사한 빨간색
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -217,19 +227,19 @@ class _HomeHeader extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 28),
 
           // ── 다가오는 여행 라벨 ──
           Text(
             '다가오는 여행',
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: Colors.white.withOpacity(0.6),
-              letterSpacing: 0.8,
+              color: Colors.white.withOpacity(0.8),
+              letterSpacing: 0.5,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
           // ── 여행 카드 or 빈 상태 ──
           if (trip != null && onScheduleTap != null)
@@ -245,14 +255,21 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
-/// 헤더 로딩 플레이스홀더 (헤더 높이 유지)
+/// 헤더 로딩 플레이스홀더
 class _HeaderLoadingPlaceholder extends StatelessWidget {
   const _HeaderLoadingPlaceholder();
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFF4E48AF),
-      height: 200,
+      height: 220,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF8A6BFF), Color(0xFF6144B0)],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+      ),
       child: const Center(
         child: CircularProgressIndicator(color: Colors.white),
       ),
@@ -267,12 +284,20 @@ class _HeaderErrorPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.primary,
+      height: 220,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF8A6BFF), Color(0xFF6144B0)],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+      ),
       padding: const EdgeInsets.all(20),
       child: Center(
         child: Text(
           '여행 정보를 불러오지 못했습니다.',
-          style: TextStyle(color: Colors.white.withOpacity(0.7)),
+          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14),
         ),
       ),
     );
@@ -287,19 +312,22 @@ class _EmptyTripCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
+        color: Colors.white.withOpacity(0.15), // 💡 반투명 화이트 배경
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.flight_takeoff_outlined, color: Colors.white54, size: 32),
-          SizedBox(height: 8),
+          Icon(Icons.flight_takeoff_outlined,
+              color: Colors.white.withOpacity(0.8), size: 36),
+          const SizedBox(height: 12),
           Text(
             '예정된 여행이 없어요',
-            style: TextStyle(color: Colors.white70, fontSize: 13),
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: 14,
+                fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -317,16 +345,16 @@ class _AddFriendButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 30,
-        height: 30,
-        decoration: const BoxDecoration(
-          color: AppColors.primaryLight,
-          shape: BoxShape.circle,
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDE9FF), // 💡 연한 보라색 배경
+          borderRadius: BorderRadius.circular(10), // 💡 둥근 사각형 느낌으로 변경
         ),
         child: const Icon(
           Icons.person_add_outlined,
-          size: 16,
-          color: AppColors.primary,
+          size: 18,
+          color: Color(0xFF6144B0), // 진한 보라색 아이콘
         ),
       ),
     );

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 class MainHomeScreen extends StatelessWidget {
-  // GoRouter에서 탭바를 관리하기 위해 넘겨주는 전용 객체입니다.
   final StatefulNavigationShell navigationShell;
 
   const MainHomeScreen({
@@ -11,7 +10,6 @@ class MainHomeScreen extends StatelessWidget {
   });
 
   void _onItemTapped(int index) {
-    // 탭을 누르면 GoRouter가 알맞은 화면(홈, 채팅 등)으로 부드럽게 전환해줍니다.
     navigationShell.goBranch(
       index,
       initialLocation: index == navigationShell.currentIndex,
@@ -21,44 +19,34 @@ class MainHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 현재 선택된 탭의 실제 화면(home_screen.dart 등)을 본문에 그려줍니다.
       body: navigationShell,
 
-      // 🎨 원하시던 이전 파일의 하단 탭바 스타일을 그대로 적용했습니다!
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: navigationShell.currentIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: const Color(0xFF7145D0), // TRIPTO 시그니처 보라색
-        unselectedItemColor: Colors.grey[400],
-        selectedLabelStyle: const TextStyle(
-          fontFamily: 'Pretendard',
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 12,
-        ),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
+      // 💡 사진 느낌을 살리기 위해 NavigationBar(Material 3)로 교체
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: navigationShell.currentIndex,
+        onDestinationSelected: _onItemTapped,
+        backgroundColor: Colors.white,
+        indicatorColor: const Color(0xFFEDE9FF), // 선택된 탭의 연한 보라색 배경
+        surfaceTintColor: Colors.transparent, // 스크롤 시 색상 변함 방지
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined, color: Colors.grey),
+            selectedIcon: Icon(Icons.home, color: Color(0xFF7145D0)),
             label: '홈',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
-            activeIcon: Icon(Icons.chat_bubble),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline, color: Colors.grey),
+            selectedIcon: Icon(Icons.chat_bubble, color: Color(0xFF7145D0)),
             label: '채팅',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today_outlined),
-            activeIcon: Icon(Icons.calendar_today),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_today_outlined, color: Colors.grey),
+            selectedIcon: Icon(Icons.calendar_today, color: Color(0xFF7145D0)),
             label: '일정',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline, color: Colors.grey),
+            selectedIcon: Icon(Icons.person, color: Color(0xFF7145D0)),
             label: '프로필',
           ),
         ],

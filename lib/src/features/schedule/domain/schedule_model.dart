@@ -45,8 +45,20 @@ class ScheduleModel {
       orElse: () => ScheduleType.activity,
     );
 
-    // 💡 안전한 파싱: 백엔드가 'memo_id'로 줄 때와 'id'로 줄 때를 모두 커버합니다.
-    final dynamic rawMemoId = json['memo_id'] ?? json['id'];
+    // 메모 데이터 추출 로직
+    int? extractedMemoId;
+    String? extractedMemoContent;
+
+    if (json['memos'] != null &&
+        json['memos'] is List &&
+        (json['memos'] as List).isNotEmpty) {
+      final firstMemo = (json['memos'] as List).first;
+      // 백엔드가 보내주는 메모 객체의 키값('id', 'content')에 맞게 파싱합니다.
+      if (firstMemo['id'] != null) {
+        extractedMemoId = int.parse(firstMemo['id'].toString());
+      }
+      extractedMemoContent = firstMemo['content']?.toString();
+    }
 
     return ScheduleModel(
       schedule_id: json['schedule_id']?.toString() ?? '',
@@ -59,9 +71,8 @@ class ScheduleModel {
       memos: json['memos'] as String?,
       latitude: json['latitude'] as double?,
       longitude: json['longitude'] as double?,
-      memo_id: rawMemoId != null ? int.parse(rawMemoId.toString()) : null,
-      memo_content:
-          json['memo_content'] as String? ?? json['content'] as String?,
+      memo_id: extractedMemoId,
+      memo_content: extractedMemoContent,
     );
   }
 

@@ -42,12 +42,15 @@ class _ScheduleItemDetailSheetState
   late TextEditingController _memoController;
   bool _isEditingMemo = false;
 
+  // ✅ 바텀 시트가 열려있는 동안 현재 메모 ID를 기억할 변수 추가
+  int? _currentMemoId;
+
   @override
   void initState() {
     super.initState();
-    // 서버에서 받아온 기존 메모(item.memo)가 있다면 해당 텍스트로 초기화하세요.
     _memoController =
         TextEditingController(text: widget.item.memo_content ?? '');
+    _currentMemoId = widget.item.memo_id; // 열릴 때 기존 메모 ID 장전
   }
 
   @override
@@ -74,7 +77,6 @@ class _ScheduleItemDetailSheetState
   void _saveMemo() async {
     final newMemo = _memoController.text;
 
-    // 빈 텍스트 방지
     if (newMemo.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('메모 내용을 입력해 주세요.')),
@@ -83,39 +85,33 @@ class _ScheduleItemDetailSheetState
     }
 
     try {
-      // 프로젝트의 실제 provider 이름으로 맞춰주세요.
       final repository = ref.read(scheduleRepositoryProvider);
-
-      // ✅ [핵심 해결 포인트] : String이든 int든 무조건 안전하게 int로 변환합니다!
       final int safeScheduleId = int.parse(widget.item.schedule_id.toString());
 
-      // memo_id는 null일 수도 있으므로 방어 코드를 작성합니다.
-      final int? safeMemoId = widget.item.memo_id != null
-          ? int.parse(widget.item.memo_id.toString())
-          : null;
-
-      if (safeMemoId == null) {
-        // 기존 메모 ID가 없다면 -> POST(생성) 호출
-        await repository.createMemo(safeScheduleId, newMemo);
+      if (_currentMemoId == null) {
+        // 1) 메모가 없었다면 생성 (POST)
+        final newId = await repository.createMemo(safeScheduleId, newMemo);
+        _currentMemoId = newId; // 백엔드가 만들어준 새 메모 ID를 기억함!
       } else {
-        // 기존 메모 ID가 있다면 -> PATCH(수정) 호출
-        await repository.updateMemo(safeMemoId, newMemo);
+        // 2) 메모가 이미 있다면 수정 (PATCH)
+        await repository.updateMemo(_currentMemoId!, newMemo);
       }
 
-      // API 호출 성공 시 UI 상태 변경
+      // ✅ 3) 저장이 성공하면 화면(Provider) 상태도 최신으로 갈아끼움
+      ref.read(scheduleProvider.notifier).updateMemoLocally(
+          widget.item.schedule_id.toString(), _currentMemoId!, newMemo);
+
       setState(() {
-        _isEditingMemo = false; // 저장 후 읽기 모드로 전환
+        _isEditingMemo = false; // 완료 후 읽기 모드로 변경
       });
-      ref.invalidate(scheduleProvider);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('메모가 성공적으로 저장되었습니다.'),
-              duration: Duration(seconds: 2)),
+          const SnackBar(content: Text('메모가 안전하게 저장되었습니다!')),
         );
       }
     } catch (e) {
+      print('🚨 메모 저장/수정 중 터미널 에러: $e'); // 💡 VS Code 터미널에서 에러 확인용
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('저장 오류: $e')),

@@ -18,43 +18,52 @@ class ScheduleScreen extends ConsumerWidget {
     final sortOrder = ref.watch(sortOrderProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F2F2),
+      backgroundColor: const Color(0xFFF6F5FA), // 연한 보라/회백색 배경
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(travelsProvider);
-          // await ref.refresh(travelsProvider.future);
         },
         child: CustomScrollView(
           slivers: [
-            // 헤더 (기존 그대로)
+            // ── 그라데이션 라운드 헤더 ──
             SliverToBoxAdapter(
               child: Container(
-                color: Colors.white,
                 padding: EdgeInsets.fromLTRB(
-                    20, MediaQuery.of(context).padding.top + 16, 20, 16),
+                    20, MediaQuery.of(context).padding.top + 16, 20, 32),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF8A6BFF), Color(0xFF6144B0)],
+                  ),
+                  borderRadius:
+                      BorderRadius.vertical(bottom: Radius.circular(32)),
+                ),
                 child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('나의 여행',
                         style: TextStyle(
-                            fontSize: 22,
+                            fontSize: 24,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF1E2939))),
-                    SizedBox(height: 4),
+                            color: Colors.white)),
+                    SizedBox(height: 6),
                     Text('모든 여행 일정을 관리하세요',
-                        style:
-                            TextStyle(fontSize: 13, color: Color(0xFF6A7282))),
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.white70)),
                   ],
                 ),
               ),
             ),
 
-            // 예정된 여행
+            // ── 예정된 여행 섹션 타이틀 ──
             const SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 20, 20, 12),
+                padding: EdgeInsets.fromLTRB(20, 24, 20, 14),
                 child: _SectionHeader(
-                    label: '예정된 여행', barColor: Color(0xFF6241D9)),
+                    label: '예정된 여행', barColor: Color(0xFF8A6BFF)),
               ),
             ),
             upcomingAsync.when(
@@ -87,13 +96,13 @@ class ScheduleScreen extends ConsumerWidget {
                     ),
             ),
 
-            // 지난 여행
+            // ── 지난 여행 섹션 타이틀 ──
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
                 child: _SectionHeader(
                   label: '지난 여행',
-                  barColor: const Color(0xFF8777F2),
+                  barColor: const Color(0xFF6144B0),
                   trailing: _SortDropdown(
                     current: sortOrder,
                     onChanged: (order) =>
@@ -117,7 +126,7 @@ class ScheduleScreen extends ConsumerWidget {
               data: (past) => past.isEmpty
                   ? const SliverToBoxAdapter(child: EmptyPastTripWidget())
                   : SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
                       sliver: SliverList.builder(
                         itemCount: past.length,
                         itemBuilder: (context, i) {
@@ -132,7 +141,7 @@ class ScheduleScreen extends ConsumerWidget {
                                 padding: const EdgeInsets.only(right: 20),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFD93030),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(24),
                                 ),
                                 child: const Icon(Icons.delete_outline,
                                     color: Colors.white, size: 26),
@@ -158,9 +167,7 @@ class ScheduleScreen extends ConsumerWidget {
   }
 }
 
-// _SectionHeader, _SortDropdown, _DropdownMenu, _DropdownItem 은 기존 코드 그대로 유지
-
-// 섹션 헤더 (보라 바 + 타이틀 + 선택적 trailing)
+// ── 섹션 헤더 ──
 class _SectionHeader extends StatelessWidget {
   final String label;
   final Color barColor;
@@ -178,13 +185,13 @@ class _SectionHeader extends StatelessWidget {
           children: [
             Container(
                 width: 4,
-                height: 22,
+                height: 18,
                 decoration: BoxDecoration(
                     color: barColor, borderRadius: BorderRadius.circular(99))),
             const SizedBox(width: 8),
             Text(label,
                 style: const TextStyle(
-                    fontSize: 17,
+                    fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: Color(0xFF1E2939))),
           ],
@@ -195,9 +202,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// 드롭다운 정렬 버튼
-/// - 버튼 클릭 시 바로 아래에 메뉴가 펼쳐짐
-/// - 외부 탭 시 자동으로 닫힘 (OverlayEntry 활용)
+// ── 드롭다운 정렬 버튼 (💡 부드러운 애니메이션 추가됨) ──
 class _SortDropdown extends StatefulWidget {
   final SortOrder current;
   final ValueChanged<SortOrder> onChanged;
@@ -208,12 +213,41 @@ class _SortDropdown extends StatefulWidget {
   State<_SortDropdown> createState() => _SortDropdownState();
 }
 
-class _SortDropdownState extends State<_SortDropdown> {
+class _SortDropdownState extends State<_SortDropdown>
+    with SingleTickerProviderStateMixin {
   OverlayEntry? _entry;
   final _key = GlobalKey();
 
-  // 드롭다운 열기
+  // 💡 애니메이션 컨트롤러 추가
+  late AnimationController _animController;
+  late Animation<double> _expandAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    // 💡 0.2초의 아주 빠르고 자연스러운 펼침 시간 설정
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+
+    // 💡 아래로 스르륵 내려오는 모션 (easeOutCubic)
+    _expandAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutCubic,
+    );
+
+    // 💡 투명도가 서서히 진해지는 모션
+    _fadeAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeIn,
+    );
+  }
+
   void _open() {
+    if (_entry != null) return; // 이미 열려있으면 무시
+
     final box = _key.currentContext!.findRenderObject() as RenderBox;
     final offset = box.localToGlobal(Offset.zero);
     final size = box.size;
@@ -221,25 +255,31 @@ class _SortDropdownState extends State<_SortDropdown> {
     _entry = OverlayEntry(
       builder: (_) => Stack(
         children: [
-          // 외부 탭 감지용 투명 배경
           Positioned.fill(
             child: GestureDetector(
               onTap: _close,
               behavior: HitTestBehavior.translucent,
             ),
           ),
-          // 드롭다운 메뉴
           Positioned(
             top: offset.dy + size.height + 6,
             right: MediaQuery.of(context).size.width - offset.dx - size.width,
             child: Material(
               color: Colors.transparent,
-              child: _DropdownMenu(
-                current: widget.current,
-                onSelect: (order) {
-                  widget.onChanged(order);
-                  _close();
-                },
+              // 💡 애니메이션 위젯으로 감싸기
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: SizeTransition(
+                  sizeFactor: _expandAnimation,
+                  axisAlignment: 1.0, // 위젯 상단을 축으로 아래로 펴짐
+                  child: _DropdownMenu(
+                    current: widget.current,
+                    onSelect: (order) {
+                      widget.onChanged(order);
+                      _close();
+                    },
+                  ),
+                ),
               ),
             ),
           ),
@@ -248,16 +288,23 @@ class _SortDropdownState extends State<_SortDropdown> {
     );
 
     Overlay.of(context).insert(_entry!);
+    _animController.forward(); // 💡 애니메이션 시작!
   }
 
   void _close() {
-    _entry?.remove();
-    _entry = null;
+    if (_entry == null) return;
+
+    // 💡 닫힐 때도 0.2초 동안 애니메이션 후 Overlay 제거
+    _animController.reverse().then((_) {
+      _entry?.remove();
+      _entry = null;
+    });
   }
 
   @override
   void dispose() {
-    _close();
+    _animController.dispose();
+    _entry?.remove();
     super.dispose();
   }
 
@@ -267,11 +314,17 @@ class _SortDropdownState extends State<_SortDropdown> {
       key: _key,
       onTap: _entry == null ? _open : _close,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(99),
-        ),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(99),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF6144B0).withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ]),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -280,12 +333,13 @@ class _SortDropdownState extends State<_SortDropdown> {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF1E2939),
+                color: Color(0xFF9993C4),
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.keyboard_arrow_down,
-                size: 16, color: Color(0xFF4A5565)),
+            // 화살표 아이콘에 회전 애니메이션을 주려면 RotationTransition 등을 적용할 수도 있습니다.
+            const Icon(Icons.keyboard_arrow_down_rounded,
+                size: 18, color: Color(0xFF9993C4)),
           ],
         ),
       ),
@@ -293,7 +347,7 @@ class _SortDropdownState extends State<_SortDropdown> {
   }
 }
 
-/// 드롭다운 메뉴 본체
+// ── 드롭다운 메뉴 본체 ──
 class _DropdownMenu extends StatelessWidget {
   final SortOrder current;
   final ValueChanged<SortOrder> onSelect;
@@ -306,18 +360,17 @@ class _DropdownMenu extends StatelessWidget {
       width: 148,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.10),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: const Color(0xFF6144B0).withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: SortOrder.values.map((order) {
@@ -335,7 +388,7 @@ class _DropdownMenu extends StatelessWidget {
   }
 }
 
-/// 드롭다운 개별 항목
+// ── 드롭다운 개별 항목 ──
 class _DropdownItem extends StatelessWidget {
   final String label;
   final bool selected;
@@ -351,18 +404,18 @@ class _DropdownItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const purple = Color(0xFF6241D9);
+    const purple = Color(0xFF8A6BFF);
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFF5F3FF) : Colors.white,
+          color: selected ? const Color(0xFFF6F5FA) : Colors.white,
           border: isLast
               ? null
-              : const Border(bottom: BorderSide(color: Color(0xFFF3F4F6))),
+              : const Border(bottom: BorderSide(color: Color(0xFFF6F5FA))),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -370,12 +423,12 @@ class _DropdownItem extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                 color: selected ? purple : const Color(0xFF1E2939),
               ),
             ),
             if (selected)
-              const Icon(Icons.check_rounded, size: 16, color: purple),
+              const Icon(Icons.check_rounded, size: 18, color: purple),
           ],
         ),
       ),

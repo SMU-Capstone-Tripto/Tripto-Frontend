@@ -23,24 +23,24 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
   // 3. API에서 실제 스케줄 데이터를 불러와 상태를 갱신하는 함수 추가
   Future<void> fetchSchedules(String travelId) async {
     try {
-      // API 호출
+      // 전체 일정 목록을 먼저 가져옵니다. (여기엔 메모가 비어있음)
       final items = await repository.getSchedules(travelId);
 
-      // 💡 만약 서버에 데이터가 하나도 없어서 UI 테스트가 안 된다면 임시로 아래 주석을 푸세요!
-      /*
-      if (items.isEmpty) {
-        state = [
-          ScheduleModel(schedule_id: '1', title: '테스트 일정 1', start_time: '10:00', category: ScheduleType.move, day_number: 1, place_name: '제주공항', place_address: ''),
-        ];
-        return;
-      }
-      */
+      // 목록의 모든 일정에 대해 각각 단건 API를 동시에 찔러 메모를 가져옵니다.
+      final itemsWithMemos = await Future.wait(
+        items.map((item) async {
+          // 아까 만들어둔 단건 메모 조회 함수 호출
+          final memo =
+              await repository.getScheduleMemo(item.schedule_id.toString());
+          // 기존 아이템에 가져온 메모를 끼워 넣어서 반환
+          return item.copyWith(memo: memo);
+        }),
+      );
 
-      // 받아온 실제 데이터로 화면(상태) 업데이트
-      state = items;
+      // 3. 메모까지 완벽하게 채워진 리스트로 화면(상태) 업데이트
+      state = itemsWithMemos;
     } catch (e) {
       print('스케줄 불러오기 실패: $e');
-      // 필요하다면 에러 처리 로직 추가
     }
   }
 
@@ -57,10 +57,36 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
 
   // 메모 업데이트 (기존 유지)
   void updateMemo(String id, String memo) {
-    state = state
-        .map(
-            (item) => item.schedule_id == id ? item.copyWith(memo: memo) : item)
-        .toList();
+    state = state.map((item) {
+      // 💡 숫자(int)와 문자(String) 비교 실패를 막기 위해 양쪽 다 문자로 변환!
+      if (item.schedule_id.toString() == id.toString()) {
+        return item.copyWith(memo: memo);
+      }
+      return item;
+    }).toList();
+  }
+
+  // 메모 ID와 내용을 함께 업데이트하는 함수
+  void updateMemoLocally(String scheduleId, int newMemoId, String newContent) {
+    state = state.map((item) {
+      // 💡 숫자(int)와 문자(String) 비교 실패를 막기 위해 양쪽 다 문자로 변환!
+      if (item.schedule_id.toString() == scheduleId.toString()) {
+        return item.copyWith(memo_id: newMemoId, memo_content: newContent);
+      }
+      return item;
+    }).toList();
+  }
+
+  // 단건 스케줄 메모만 서버에서 당겨와서 동기화
+  Future<void> fetchAndSyncMemo(String scheduleId) async {
+    try {
+      final latestMemo = await repository.getScheduleMemo(scheduleId);
+
+      // 기존에 만들어두신 updateMemo를 재활용해서 상태를 갱신합니다!
+      updateMemo(scheduleId, latestMemo);
+    } catch (e) {
+      print('메모 동기화 실패: $e');
+    }
   }
 }
 

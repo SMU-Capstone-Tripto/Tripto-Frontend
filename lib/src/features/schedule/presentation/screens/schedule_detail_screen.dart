@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart'; // 네이버 지도 패키지
 import 'package:share_plus/share_plus.dart'; // 공유 패키지
 
+import '../../data/schedule_repository.dart';
 import '../../presentation/schedule_detail_provider.dart';
 import '../../presentation/widgets/timeline_item_card.dart';
 import '../../presentation/widgets/schedule_item_detail_sheet.dart';
@@ -128,12 +129,12 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
             ),
           ),
 
-          // ── 일정 뷰 (기존과 동일) ──
+          // 일정 뷰
           if (!_isMapView) ...[
             Container(
               color: Colors.white,
               child: SizedBox(
-                height: 64,
+                height: 90,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding:
@@ -185,6 +186,8 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
                 ),
               ),
             ),
+
+            // 타임라인 리스트
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
@@ -192,7 +195,23 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
                 itemBuilder: (_, i) => TimelineItemCard(
                   item: dayItems[i],
                   isLast: i == dayItems.length - 1,
-                  onTap: () => showScheduleItemDetail(context, dayItems[i]),
+                  onTap: () async {
+                    final targetId = dayItems[i].schedule_id.toString();
+
+                    // 💡 1. 꼬일 수 있는 상태 업데이트를 거치지 않고,
+                    // Repository에서 최신 '메모 텍스트'만 다이렉트로 뽑아옵니다.
+                    final realMemo = await ref
+                        .read(scheduleRepositoryProvider)
+                        .getScheduleMemo(targetId);
+
+                    if (context.mounted) {
+                      // 💡 2. 뽑아온 진짜 메모를 현재 아이템에 '강제로' 덮어씌워 새로운 객체를 만듭니다.
+                      final forcedItem = dayItems[i].copyWith(memo: realMemo);
+
+                      // 💡 3. 완벽하게 메모가 들어간 객체로 바텀 시트를 엽니다!
+                      showScheduleItemDetail(context, forcedItem);
+                    }
+                  },
                 ),
               ),
             ),
@@ -234,7 +253,7 @@ class _MapView extends ConsumerWidget {
       children: [
         // Day 필터
         SizedBox(
-          height: 44,
+          height: 60,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
