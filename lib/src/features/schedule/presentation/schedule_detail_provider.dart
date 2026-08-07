@@ -77,6 +77,16 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
     }).toList();
   }
 
+  // 스케줄 시간 업데이트 (로컬 상태만)
+  void updateTimeLocally(String scheduleId, String newTime) {
+    state = state.map((item) {
+      if (item.schedule_id.toString() == scheduleId.toString()) {
+        return item.copyWith(start_time: newTime);
+      }
+      return item;
+    }).toList();
+  }
+
   // 단건 스케줄 메모만 서버에서 당겨와서 동기화
   Future<void> fetchAndSyncMemo(String scheduleId) async {
     try {

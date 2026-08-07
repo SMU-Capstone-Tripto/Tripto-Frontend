@@ -120,6 +120,57 @@ class _ScheduleItemDetailSheetState
     }
   }
 
+  // ── 💡 바텀 시트 클래스 내부에 시간 수정 함수 추가 ──
+  Future<void> _editTime() async {
+    // 1. 기존 시간 불러오기 (로그를 보면 시간이 "06:13:53.853000" 형태로 올 수 있으므로 안전하게 앞의 시:분만 파싱)
+    TimeOfDay initialTime = TimeOfDay.now();
+    final timeString = widget.item.start_time;
+    if (timeString.contains(':')) {
+      final parts = timeString.split(':');
+      initialTime =
+          TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    }
+
+    // 2. 플러터 기본 시간 선택기(Time Picker) 띄우기
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      helpText: '방문 예정 시간 선택',
+    );
+
+    // 3. 사용자가 취소하지 않고 시간을 골랐다면?
+    if (picked != null) {
+      // 24시간 형식의 "HH:mm" 문자열로 변환
+      final newTimeStr =
+          '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+
+      try {
+        final repository = ref.read(scheduleRepositoryProvider);
+        final safeScheduleId = int.parse(widget.item.schedule_id);
+
+        // 백엔드 API에 시간 수정 요청
+        await repository.updateScheduleTime(safeScheduleId, newTimeStr);
+
+        // 프론트 화면 즉시 업데이트
+        ref
+            .read(scheduleProvider.notifier)
+            .updateTimeLocally(widget.item.schedule_id, newTimeStr);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('시간이 변경되었습니다.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('시간 변경 오류: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // 네이버 지도 좌표 방어 로직
@@ -202,15 +253,25 @@ class _ScheduleItemDetailSheetState
                                 fontWeight: FontWeight.bold)),
                       ),
                       const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.access_time,
-                              size: 14, color: Color(0xFF9993C4)),
-                          const SizedBox(width: 4),
-                          Text(widget.item.start_time ?? '',
-                              style: const TextStyle(
-                                  fontSize: 13, color: Color(0xFF9993C4))),
-                        ],
+                      GestureDetector(
+                        onTap: _editTime,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.access_time,
+                                size: 14, color: Color(0xFF6144B0)), // 보라색으로 강조
+                            const SizedBox(width: 4),
+                            Text(widget.item.start_time ?? '시간 미정',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF6144B0))), // 보라색 굵은 글씨로 강조
+                            const SizedBox(width: 4),
+                            const Icon(Icons.edit,
+                                size: 12,
+                                color:
+                                    Color(0xFF6144B0)), // 수정 가능함을 보여주는 연필 아이콘
+                          ],
+                        ),
                       ),
                     ],
                   ),

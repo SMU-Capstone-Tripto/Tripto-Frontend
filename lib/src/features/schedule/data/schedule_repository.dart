@@ -108,6 +108,22 @@ class ScheduleRepository {
       return '';
     }
   }
+
+  // 특정 스케줄의 시간(start_time) 수정하기
+  Future<void> updateScheduleTime(int scheduleId, String newTime) async {
+    try {
+      // API 명세(Swagger)에 일정 수정 엔드포인트가 PATCH /schedules/{id} 인지 확인 후 맞춰주세요!
+      await _dio.patch(
+        '/schedules/$scheduleId',
+        data: {
+          'start_time': newTime, // 백엔드가 요구하는 시간 포맷에 맞게 키값을 설정하세요
+        },
+      );
+    } catch (e) {
+      print('🚨 시간 수정 실패: $e');
+      throw Exception('시간 수정 실패: $e');
+    }
+  }
 }
 
 final scheduleRepositoryProvider = Provider<ScheduleRepository>((ref) {

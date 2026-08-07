@@ -77,7 +77,9 @@ class ScheduleModel {
   }
 
   // 💡 핵심 해결 포인트: 상태 업데이트 시 메모 데이터가 증발하지 않도록 파라미터를 추가했습니다.
+  // 💡 copyWith 내부에 start_time을 추가합니다.
   ScheduleModel copyWith({
+    String? start_time, // ✅ 추가된 부분
     String? memo,
     int? memo_id,
     String? memo_content,
@@ -85,7 +87,7 @@ class ScheduleModel {
       ScheduleModel(
         schedule_id: schedule_id,
         title: title,
-        start_time: start_time,
+        start_time: start_time ?? this.start_time,
         category: category,
         day_number: day_number,
         place_name: place_name,
