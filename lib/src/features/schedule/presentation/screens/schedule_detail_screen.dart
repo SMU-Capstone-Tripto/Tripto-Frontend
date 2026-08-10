@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_naver_map/flutter_naver_map.dart'; // 네이버 지도 패키지
+import 'package:google_maps_flutter/google_maps_flutter.dart'; // 🗺️ 구글 지도 패키지
 import 'package:share_plus/share_plus.dart'; // 공유 패키지
 
 import '../../data/schedule_repository.dart';
@@ -198,17 +198,12 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
                   onTap: () async {
                     final targetId = dayItems[i].schedule_id.toString();
 
-                    // 💡 1. 꼬일 수 있는 상태 업데이트를 거치지 않고,
-                    // Repository에서 최신 '메모 텍스트'만 다이렉트로 뽑아옵니다.
                     final realMemo = await ref
                         .read(scheduleRepositoryProvider)
                         .getScheduleMemo(targetId);
 
                     if (context.mounted) {
-                      // 💡 2. 뽑아온 진짜 메모를 현재 아이템에 '강제로' 덮어씌워 새로운 객체를 만듭니다.
                       final forcedItem = dayItems[i].copyWith(memo: realMemo);
-
-                      // 💡 3. 완벽하게 메모가 들어간 객체로 바텀 시트를 엽니다!
                       showScheduleItemDetail(context, forcedItem);
                     }
                   },
@@ -231,23 +226,26 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
   }
 }
 
-// 네이버 지도 뷰
-class _MapView extends ConsumerWidget {
+// 🗺️ 구글 지도 뷰 (Day별 필터링 + 마커 클릭 연동 하단 카드)
+class _MapView extends ConsumerStatefulWidget {
   final TravelModel schedule;
   final int totalDays;
   const _MapView({required this.schedule, required this.totalDays});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final travelIdStr = schedule.travel_id.toString();
+  ConsumerState<_MapView> createState() => _MapViewState();
+}
+
+class _MapViewState extends ConsumerState<_MapView> {
+  // 사용자가 클릭한 마커의 스케줄 ID를 저장하는 상태 (없으면 해당 Day의 첫 번째 장소)
+  String? _selectedScheduleId;
+
+  @override
+  Widget build(BuildContext context) {
+    final travelIdStr = widget.schedule.travel_id.toString();
     final mapPinsAsync = ref.watch(mapPinsProvider(travelIdStr));
     final selectedDay = ref.watch(selectedDayProvider);
     final dayItems = ref.watch(dayItemsProvider);
-
-    // 지도를 처음에 띄울 중심 좌표 (예: 태종대 위경도)
-    // 실제 서비스에서는 dayItems.first 의 위도/경도를 사용하도록 연결해야 합니다.
-    const double initialLat = 35.0531;
-    const double initialLng = 129.0874;
 
     return Column(
       children: [
@@ -257,12 +255,16 @@ class _MapView extends ConsumerWidget {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            itemCount: totalDays,
+            itemCount: widget.totalDays,
             itemBuilder: (_, i) {
               final day = i + 1;
               final isSelected = day == selectedDay;
               return GestureDetector(
-                onTap: () => ref.read(selectedDayProvider.notifier).state = day,
+                onTap: () {
+                  // Day가 바뀔 때 선택된 마커 초기화
+                  setState(() => _selectedScheduleId = null);
+                  ref.read(selectedDayProvider.notifier).state = day;
+                },
                 child: Container(
                   margin: const EdgeInsets.only(right: 6),
                   padding:
@@ -286,85 +288,108 @@ class _MapView extends ConsumerWidget {
           ),
         ),
 
-        // ✅ Naver Maps 실제 구현부
+        // ✅ 구글 지도 렌더링 영역
         Expanded(
           child: mapPinsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, stack) =>
                 Center(child: Text('지도 데이터를 불러오지 못했습니다: $err')),
-            data: (pins) {
-              // 핀이 하나도 없을 경우 제주도를 기본 중심 좌표로 설정
-              double centerLat = 33.4996;
-              double centerLng = 126.5312;
+            data: (allPins) {
+              final currentDayPins = dayItems;
 
-              if (pins.isNotEmpty) {
-                // 데이터가 있다면 첫 번째 장소를 지도의 중심으로 잡습니다.
-                centerLat = pins.first.latitude ?? 33.4996;
-                centerLng = pins.first.longitude ?? 126.5312;
+              double centerLat = 35.1531;
+              double centerLng = 129.1186;
+
+              final Set<Marker> markers = {};
+              final List<LatLng> polylinePoints = [];
+
+              for (var item in currentDayPins) {
+                if (item.latitude != null &&
+                    item.longitude != null &&
+                    item.latitude != -90.0) {
+                  final latLng = LatLng(item.latitude!, item.longitude!);
+                  final scheduleIdStr = item.schedule_id.toString();
+
+                  markers.add(
+                    Marker(
+                      markerId: MarkerId(scheduleIdStr),
+                      position: latLng,
+                      infoWindow: InfoWindow(title: item.place_name ?? '장소'),
+                      onTap: () {
+                        // 💡 마커를 클릭했을 때 하단 카드가 바뀌도록 상태 업데이트!
+                        setState(() {
+                          _selectedScheduleId = scheduleIdStr;
+                        });
+                      },
+                    ),
+                  );
+                  polylinePoints.add(latLng);
+                }
               }
 
-              return NaverMap(
-                options: NaverMapViewOptions(
-                  initialCameraPosition: NCameraPosition(
-                    target: NLatLng(centerLat, centerLng),
-                    zoom: 11,
-                  ),
+              if (polylinePoints.isNotEmpty) {
+                centerLat = polylinePoints.first.latitude;
+                centerLng = polylinePoints.first.longitude;
+              }
+
+              return GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: LatLng(centerLat, centerLng),
+                  zoom: 14,
                 ),
-                onMapReady: (controller) {
-                  for (var pin in pins) {
-                    // ✅ 위도와 경도가 null이 아닐 때만 마커를 찍도록 방어 코드 추가
-                    if (pin.latitude != null && pin.longitude != null) {
-                      final marker = NMarker(
-                        id: pin.schedule_id.toString(),
-                        position: NLatLng(pin.latitude!, pin.longitude!),
-                        caption: NOverlayCaption(text: pin.place_name ?? '장소'),
-                      );
-                      controller.addOverlay(marker);
-                    }
-                  }
+                markers: markers,
+                polylines: {
+                  Polyline(
+                    polylineId: const PolylineId('day_travel_path'),
+                    points: polylinePoints,
+                    color: const Color(0xFF6144B0),
+                    width: 4,
+                  ),
                 },
+                zoomControlsEnabled: false,
+                myLocationButtonEnabled: false,
               );
             },
           ),
         ),
 
-        // 하단 장소 카드 (선택된 Day의 첫 번째 장소 정보를 띄움)
+        // 💡 하단 장소 카드 (클릭한 마커 혹은 해당 Day의 첫 번째 장소 정보 표시)
         if (dayItems.isNotEmpty)
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0x146144B0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(dayItems.first.place_name ?? '',
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E2939))),
-                Text(dayItems.first.place_address ?? '',
-                    style: const TextStyle(
-                        fontSize: 11, color: Color(0xFF9993C4))),
-                const SizedBox(height: 6),
-                const Row(
-                  children: [
-                    Icon(Icons.navigation_outlined,
-                        size: 14, color: Color(0xFF6144B0)),
-                    SizedBox(width: 4),
-                    Text('길찾기',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF6144B0))),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          () {
+            // 사용자가 클릭한 마커가 있다면 그 아이템을 찾고, 없으면 첫 번째 아이템을 보여줌
+            final activeItem = dayItems.firstWhere(
+              (item) => item.schedule_id.toString() == _selectedScheduleId,
+              orElse: () => dayItems.first,
+            );
+
+            return Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0x146144B0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(activeItem.place_name ?? '장소 이름 없음',
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1E2939))),
+                  const SizedBox(height: 2),
+                  Text(activeItem.place_address ?? '주소 정보 없음',
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF9993C4))),
+                  const SizedBox(height: 6),
+                  const Row(
+                    children: [],
+                  ),
+                ],
+              ),
+            );
+          }(),
       ],
     );
   }

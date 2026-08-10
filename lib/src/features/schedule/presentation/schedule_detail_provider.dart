@@ -23,22 +23,60 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
   // 3. API에서 실제 스케줄 데이터를 불러와 상태를 갱신하는 함수 추가
   Future<void> fetchSchedules(String travelId) async {
     try {
-      // 전체 일정 목록을 먼저 가져옵니다. (여기엔 메모가 비어있음)
-      final items = await repository.getSchedules(travelId);
+      // ❌ [테스트용 주석 처리] 실제 서버 통신 끄기
+      // final items = await repository.getSchedules(travelId);
+      // final itemsWithMemos = await Future.wait(...);
 
-      // 목록의 모든 일정에 대해 각각 단건 API를 동시에 찔러 메모를 가져옵니다.
-      final itemsWithMemos = await Future.wait(
-        items.map((item) async {
-          // 아까 만들어둔 단건 메모 조회 함수 호출
-          final memo =
-              await repository.getScheduleMemo(item.schedule_id.toString());
-          // 기존 아이템에 가져온 메모를 끼워 넣어서 반환
-          return item.copyWith(memo: memo);
-        }),
-      );
+      // ✅ [테스트용] 실제 부산 핫플레이스 위도/경도가 들어간 완벽한 더미 데이터
+      state = [
+        const ScheduleModel(
+          schedule_id: '9991',
+          title: '광안리 바다 구경',
+          start_time: '10:00:00',
+          category: ScheduleType.activity, // 관광(초록색 뱃지/나침반)
+          day_number: 1,
+          place_name: '광안리 해수욕장',
+          place_address: '부산광역시 수영구 광안해변로 219',
+          latitude: 35.1531696, // ✅ 실제 광안리 해수욕장 위도
+          longitude: 129.118666, // ✅ 실제 광안리 해수욕장 경도
+          cost: 0,
+          memos: null,
+          memo_id: null,
+          memo_content: '밤에 드론쇼 명당 자리 미리 확인해두기',
+        ),
+        const ScheduleModel(
+          schedule_id: '9992',
+          title: '해운대 유명 소갈비 점심',
+          start_time: '13:00:00',
+          category: ScheduleType.eat, // 식사(주황색 뱃지/포크나이프)
+          day_number: 1,
+          place_name: '해운대암소갈비집',
+          place_address: '부산광역시 해운대구 중동2로10번길 32-10',
+          latitude: 35.163351, // ✅ 실제 식당 위도
+          longitude: 129.166609, // ✅ 실제 식당 경도
+          cost: 52000,
+          memos: null,
+          memo_id: null,
+          memo_content: '웨이팅이 길 수 있으니 캐치테이블로 미리 확인!',
+        ),
+        const ScheduleModel(
+          schedule_id: '9993',
+          title: '호텔 체크인 및 휴식',
+          start_time: '16:00:00',
+          category: ScheduleType.stay, // 숙소(파란색 뱃지/침대)
+          day_number: 1,
+          place_name: '파라다이스 호텔 부산',
+          place_address: '부산광역시 해운대구 해운대해변로 296',
+          latitude: 35.160032, // ✅ 실제 호텔 위도
+          longitude: 129.163084, // ✅ 실제 호텔 경도
+          cost: 350000,
+          memos: null,
+          memo_id: null,
+          memo_content: '체크인할 때 오션뷰 객실로 배정해달라고 요청하기',
+        ),
+      ];
 
-      // 3. 메모까지 완벽하게 채워진 리스트로 화면(상태) 업데이트
-      state = itemsWithMemos;
+      return; // 더미 데이터만 넣고 함수 종료
     } catch (e) {
       print('스케줄 불러오기 실패: $e');
     }

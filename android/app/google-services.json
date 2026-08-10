@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:659333593204:android:da4f92fe5effe0de74f921",
+        "mobilesdk_app_id": "1:659333593204:android:ee65dcdf96cc340f74f921",
         "android_client_info": {
-          "package_name": "com.example.tripto"
+          "package_name": "com.smuratel.tripto"
         }
       },
       "oauth_client": [],

@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:share_plus/share_plus.dart';
-
-// 💡 실제 프로젝트의 ScheduleModel 경로로 맞춰주세요.
-import '../../../schedule/domain/travel_model.dart';
 import '../../data/schedule_repository.dart';
 import '../../domain/schedule_model.dart';
 import '../schedule_detail_provider.dart';
@@ -40,25 +37,7 @@ class ScheduleItemDetailSheet extends ConsumerStatefulWidget {
 
 class _ScheduleItemDetailSheetState
     extends ConsumerState<ScheduleItemDetailSheet> {
-  late TextEditingController _memoController;
-  bool _isEditingMemo = false;
-
-  // ✅ 바텀 시트가 열려있는 동안 현재 메모 ID를 기억할 변수 추가
-  int? _currentMemoId;
-
-  @override
-  void initState() {
-    super.initState();
-    _memoController =
-        TextEditingController(text: widget.item.memo_content ?? '');
-    _currentMemoId = widget.item.memo_id; // 열릴 때 기존 메모 ID 장전
-  }
-
-  @override
-  void dispose() {
-    _memoController.dispose();
-    super.dispose();
-  }
+  // 🗑️ 메모 관련 변수, initState, dispose, _saveMemo 함수 모두 삭제 완료!
 
   // 장소 공유 기능
   void _sharePlace() {
@@ -74,88 +53,37 @@ class _ScheduleItemDetailSheetState
     Share.share(shareText, subject: 'Tripto 장소 공유');
   }
 
-  // 메모 저장 기능 (API 연동)
-  void _saveMemo() async {
-    final newMemo = _memoController.text;
-
-    if (newMemo.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('메모 내용을 입력해 주세요.')),
-      );
-      return;
-    }
-
-    try {
-      final repository = ref.read(scheduleRepositoryProvider);
-      final int safeScheduleId = int.parse(widget.item.schedule_id.toString());
-
-      if (_currentMemoId == null) {
-        // 1) 메모가 없었다면 생성 (POST)
-        final newId = await repository.createMemo(safeScheduleId, newMemo);
-        _currentMemoId = newId; // 백엔드가 만들어준 새 메모 ID를 기억함!
-      } else {
-        // 2) 메모가 이미 있다면 수정 (PATCH)
-        await repository.updateMemo(_currentMemoId!, newMemo);
-      }
-
-      // ✅ 3) 저장이 성공하면 화면(Provider) 상태도 최신으로 갈아끼움
-      ref.read(scheduleProvider.notifier).updateMemoLocally(
-          widget.item.schedule_id.toString(), _currentMemoId!, newMemo);
-
-      setState(() {
-        _isEditingMemo = false; // 완료 후 읽기 모드로 변경
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('메모가 안전하게 저장되었습니다!')),
-        );
-      }
-    } catch (e) {
-      print('🚨 메모 저장/수정 중 터미널 에러: $e'); // 💡 VS Code 터미널에서 에러 확인용
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('저장 오류: $e')),
-        );
-      }
-    }
-  }
-
-  // ── 💡 바텀 시트 클래스 내부에 시간 수정 함수 추가 ──
+  // 시간 수정 기능 (서버 DB 반영 + 로컬 반영)
   Future<void> _editTime() async {
-    // 1. 기존 시간 불러오기 (로그를 보면 시간이 "06:13:53.853000" 형태로 올 수 있으므로 안전하게 앞의 시:분만 파싱)
     TimeOfDay initialTime = TimeOfDay.now();
     final timeString = widget.item.start_time;
-    if (timeString.contains(':')) {
+    if (timeString != null && timeString.contains(':')) {
       final parts = timeString.split(':');
       initialTime =
           TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
     }
 
-    // 2. 플러터 기본 시간 선택기(Time Picker) 띄우기
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: initialTime,
       helpText: '방문 예정 시간 선택',
     );
 
-    // 3. 사용자가 취소하지 않고 시간을 골랐다면?
     if (picked != null) {
-      // 24시간 형식의 "HH:mm:ss" 문자열로 변환
       final newTimeStr =
           '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}:00';
+      final scheduleIdInt = int.parse(widget.item.schedule_id.toString());
 
       try {
-        final repository = ref.read(scheduleRepositoryProvider);
-        final safeScheduleId = int.parse(widget.item.schedule_id);
+        // 💡 1. 서버 DB에 시간 수정 요청 전송
+        await ref
+            .read(scheduleRepositoryProvider)
+            .updateScheduleTime(scheduleIdInt, newTimeStr);
 
-        // 백엔드 API에 시간 수정 요청
-        // await repository.updateScheduleTime(safeScheduleId, newTimeStr);
-
-        // 프론트 화면 즉시 업데이트
+        // 2. 화면(로컬) 상태 즉시 갱신
         ref
             .read(scheduleProvider.notifier)
-            .updateTimeLocally(widget.item.schedule_id, newTimeStr);
+            .updateTimeLocally(widget.item.schedule_id.toString(), newTimeStr);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -165,7 +93,7 @@ class _ScheduleItemDetailSheetState
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('시간 변경 오류: $e')),
+            SnackBar(content: Text('시간 변경 실패: $e')),
           );
         }
       }
@@ -183,9 +111,10 @@ class _ScheduleItemDetailSheetState
       lng = 128.6035;
     }
 
+    // 카테고리별 테마 색상 결정 로직
     final String typeStr = widget.item.category.toString();
-    Color primaryColor; // 글자 및 아이콘 색상
-    Color bgColor; // 동그라미 및 뱃지 배경 색상
+    Color primaryColor;
+    Color bgColor;
 
     if (typeStr == 'ScheduleType.eat') {
       primaryColor = const Color(0xFFFF9800); // 식사: 주황색
@@ -197,7 +126,7 @@ class _ScheduleItemDetailSheetState
       primaryColor = const Color(0xFF9C27B0); // 이동: 보라색
       bgColor = const Color(0xFFF3E5F5);
     } else {
-      primaryColor = const Color(0xFF4CAF50); // 관광/기타: 초록색 (기본)
+      primaryColor = const Color(0xFF4CAF50); // 관광/기타: 초록색
       bgColor = const Color(0xFFE8F5E9);
     }
 
@@ -245,11 +174,10 @@ class _ScheduleItemDetailSheetState
               ),
               child: Row(
                 children: [
-                  // ── 💡 동그란 아이콘 영역 ──
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: bgColor, // 🎨 배경색 자동 적용
+                      color: bgColor,
                       borderRadius: BorderRadius.circular(99),
                     ),
                     child: Icon(
@@ -262,15 +190,13 @@ class _ScheduleItemDetailSheetState
                           return Icons.hotel_outlined;
                         return Icons.explore_outlined;
                       }(),
-                      color: primaryColor, // 🎨 아이콘 색상 자동 적용
+                      color: primaryColor,
                     ),
                   ),
-                  // ───────────────────────
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ── 💡 교체된 카테고리 드롭다운 뱃지 ──
                       PopupMenuButton<String>(
                         position: PopupMenuPosition.under,
                         shape: RoundedRectangleBorder(
@@ -284,35 +210,62 @@ class _ScheduleItemDetailSheetState
                         ],
                         onSelected: (String newValue) async {
                           ScheduleType newType;
+                          String categoryServerStr;
+
                           switch (newValue) {
                             case '이동':
                               newType = ScheduleType.move;
+                              categoryServerStr = 'move';
                               break;
                             case '식사':
                               newType = ScheduleType.eat;
+                              categoryServerStr = 'eat';
                               break;
                             case '숙소':
                               newType = ScheduleType.stay;
+                              categoryServerStr = 'stay';
                               break;
                             default:
                               newType = ScheduleType.activity;
+                              categoryServerStr = 'activity';
                               break;
                           }
+
+                          final scheduleIdInt =
+                              int.parse(widget.item.schedule_id.toString());
+
                           try {
+                            // 💡 1. 서버 DB에 카테고리 수정 요청 전송
+                            await ref
+                                .read(scheduleRepositoryProvider)
+                                .updateScheduleCategory(
+                                    scheduleIdInt, categoryServerStr);
+
+                            // 2. 화면(로컬) 상태 즉시 갱신
                             ref
                                 .read(scheduleProvider.notifier)
                                 .updateCategoryLocally(
                                     widget.item.schedule_id.toString(),
                                     newType);
+
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('카테고리가 변경되었습니다.')),
+                              );
+                            }
                           } catch (e) {
-                            print('카테고리 변경 오류: $e');
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('카테고리 변경 실패: $e')),
+                              );
+                            }
                           }
                         },
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: bgColor, // 🎨 뱃지 배경색 자동 적용
+                            color: bgColor,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -330,21 +283,18 @@ class _ScheduleItemDetailSheetState
                                 }(),
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: primaryColor, // 🎨 뱃지 글자색 자동 적용
+                                  color: primaryColor,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                               const SizedBox(width: 2),
                               Icon(Icons.arrow_drop_down,
-                                  size: 14,
-                                  color: primaryColor), // 🎨 화살표 색상 자동 적용
+                                  size: 14, color: primaryColor),
                             ],
                           ),
                         ),
                       ),
-                      // ─────────────────────────────────────
                       const SizedBox(height: 6),
-                      // ⏰ 시간 표시 영역
                       GestureDetector(
                         onTap: _editTime,
                         child: Row(
@@ -363,21 +313,17 @@ class _ScheduleItemDetailSheetState
                           ],
                         ),
                       ),
-                      // ── 💡 예상 비용 표시 영역 ──
                       const SizedBox(height: 4),
                       Row(
                         children: [
                           const Icon(Icons.monetization_on_outlined,
                               size: 14, color: Color(0xFF9993C4)),
                           const SizedBox(width: 4),
-                          Text(
-                            '예상 비용: ${widget.item.cost ?? 0}원',
-                            style: const TextStyle(
-                                fontSize: 13, color: Color(0xFF9993C4)),
-                          ),
+                          Text('예상 비용: ${widget.item.cost ?? 0}원',
+                              style: const TextStyle(
+                                  fontSize: 13, color: Color(0xFF9993C4))),
                         ],
                       ),
-                      // ────────────────────────────────
                     ],
                   ),
                 ],
@@ -385,36 +331,32 @@ class _ScheduleItemDetailSheetState
             ),
             const SizedBox(height: 16),
 
-            // 네이버 지도 렌더링 영역
+            // 🗺️ 구글 지도 렌더링 영역
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: SizedBox(
                 height: 160,
                 width: double.infinity,
-                child: NaverMap(
-                  options: NaverMapViewOptions(
-                    initialCameraPosition: NCameraPosition(
-                      target: NLatLng(lat, lng),
-                      zoom: 14,
-                    ),
-                    scrollGesturesEnable: false,
-                    zoomGesturesEnable: false,
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: LatLng(lat, lng),
+                    zoom: 14,
                   ),
-                  onMapReady: (controller) {
-                    final marker = NMarker(
-                      id: widget.item.schedule_id.toString(),
-                      position: NLatLng(lat, lng),
-                      caption:
-                          NOverlayCaption(text: widget.item.place_name ?? '장소'),
-                    );
-                    controller.addOverlay(marker);
+                  markers: {
+                    Marker(
+                      markerId: MarkerId(widget.item.schedule_id.toString()),
+                      position: LatLng(lat, lng),
+                      infoWindow:
+                          InfoWindow(title: widget.item.place_name ?? '장소'),
+                    ),
                   },
+                  zoomControlsEnabled: false,
+                  scrollGesturesEnabled: false,
                 ),
               ),
             ),
-            const SizedBox(height: 16),
 
-            // 장소 상세 정보 카드
+            // 🗑️ 길찾기 및 메모 삭제된 장소 상세 정보 카드
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -434,118 +376,6 @@ class _ScheduleItemDetailSheetState
                   Text(widget.item.place_address ?? '주소 정보가 없습니다.',
                       style: const TextStyle(
                           fontSize: 13, color: Color(0xFF9993C4))),
-                  const SizedBox(height: 12),
-                  const Row(
-                    children: [
-                      Icon(Icons.navigation_outlined,
-                          size: 16, color: Color(0xFF6144B0)),
-                      SizedBox(width: 4),
-                      Text('길찾기',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF6144B0))),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 메모 기능 카드
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('메모',
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF9993C4))),
-                  const SizedBox(height: 12),
-                  if (_isEditingMemo) ...[
-                    TextField(
-                      controller: _memoController,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        hintText: '방문 시 주의사항, 예약 정보 등을 기록해보세요.',
-                        hintStyle: const TextStyle(
-                            color: Color(0xFFC0BBDE), fontSize: 13),
-                        filled: true,
-                        fillColor: const Color(0xFFF4F3FF),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () =>
-                              setState(() => _isEditingMemo = false),
-                          child: const Text('취소',
-                              style: TextStyle(
-                                  color: Color(0xFF9993C4),
-                                  fontWeight: FontWeight.bold)),
-                        ),
-                        ElevatedButton(
-                          onPressed: _saveMemo,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6144B0),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: const Text('저장',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  ] else ...[
-                    Text(
-                      _memoController.text.isEmpty
-                          ? '이곳에서 메모를 추가할 수 있습니다. 방문 시 주의사항, 예약 정보 등을 기록해보세요.'
-                          : _memoController.text,
-                      style: TextStyle(
-                        fontSize: 14,
-                        height: 1.5,
-                        color: _memoController.text.isEmpty
-                            ? const Color(0xFFC0BBDE)
-                            : const Color(0xFF1E2939),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    GestureDetector(
-                      onTap: () => setState(() => _isEditingMemo = true),
-                      child: Row(
-                        children: [
-                          Icon(
-                              _memoController.text.isEmpty
-                                  ? Icons.add
-                                  : Icons.edit,
-                              size: 16,
-                              color: const Color(0xFF6144B0)),
-                          const SizedBox(width: 4),
-                          Text(_memoController.text.isEmpty ? '메모 추가' : '메모 수정',
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF6144B0))),
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),

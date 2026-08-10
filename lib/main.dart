@@ -3,7 +3,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
-import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
@@ -79,12 +78,6 @@ void main() async {
   } catch (e) {
     debugPrint('⚠️ [앱 시작] 토큰 초기화 실패: $e');
   }
-
-  // 네이버 지도 SDK 초기화
-  await NaverMapSdk.instance.initialize(
-    clientId: dotenv.env['NAVER_MAP_CLIENT_ID'] ?? '',
-    onAuthFailed: (ex) => print('네이버 지도 인증 오류: $ex'),
-  );
 
   // 카카오 로그인 SDK 공식 초기화
   KakaoSdk.init(

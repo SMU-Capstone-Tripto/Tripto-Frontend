@@ -1,25 +1,26 @@
 // lib/src/features/profile/presentation/screens/notification_setting_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tripto/src/constants/app_theme.dart';
+import '../../../settings/presentation/notification_setting_provider.dart';
 
-class NotificationSettingScreen extends StatefulWidget {
+class NotificationSettingScreen extends ConsumerStatefulWidget {
   const NotificationSettingScreen({super.key});
 
   @override
-  State<NotificationSettingScreen> createState() =>
+  ConsumerState<NotificationSettingScreen> createState() =>
       _NotificationSettingScreenState();
 }
 
-class _NotificationSettingScreenState extends State<NotificationSettingScreen> {
-  bool _push = true;
-  bool _newFriend = true;
-  bool _chat = true;
-  bool _scheduleAlert = true;
-  bool _tripAlert = false;
-
+// 💡 반드시 일반 State가 아닌 ConsumerState를 상속해야 합니다.
+class _NotificationSettingScreenState
+    extends ConsumerState<NotificationSettingScreen> {
   @override
   Widget build(BuildContext context) {
+    // 💡 ref.watch를 통해 전역 상태를 안전하게 구독합니다.
+    final settings = ref.watch(notificationProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
@@ -53,31 +54,51 @@ class _NotificationSettingScreenState extends State<NotificationSettingScreen> {
                     _NotifItem(
                         title: '푸시 알림 받기',
                         desc: '앱의 모든 알림을 받습니다',
-                        value: _push,
-                        onChanged: (v) => setState(() => _push = v)),
+                        value: settings.push,
+                        onChanged: (v) {
+                          ref
+                              .read(notificationProvider.notifier)
+                              .updateSetting('notif_push', v);
+                        }),
                   ]),
                   const SizedBox(height: 16),
                   _NotifSection(label: '활동', items: [
                     _NotifItem(
                         title: '친구 신청',
                         desc: '새로운 친구 신청이 오면 알림',
-                        value: _newFriend,
-                        onChanged: (v) => setState(() => _newFriend = v)),
+                        value: settings.newFriend,
+                        onChanged: (v) {
+                          ref
+                              .read(notificationProvider.notifier)
+                              .updateSetting('notif_new_friend', v);
+                        }),
                     _NotifItem(
                         title: '채팅',
                         desc: '새로운 메시지가 도착하면 알림',
-                        value: _chat,
-                        onChanged: (v) => setState(() => _chat = v)),
+                        value: settings.chat,
+                        onChanged: (v) {
+                          ref
+                              .read(notificationProvider.notifier)
+                              .updateSetting('notif_chat', v);
+                        }),
                     _NotifItem(
                         title: '일정 알림',
                         desc: '여행 D-7, D-1 알림',
-                        value: _scheduleAlert,
-                        onChanged: (v) => setState(() => _scheduleAlert = v)),
+                        value: settings.scheduleAlert,
+                        onChanged: (v) {
+                          ref
+                              .read(notificationProvider.notifier)
+                              .updateSetting('notif_schedule', v);
+                        }),
                     _NotifItem(
                         title: '여행 시작/종료',
                         desc: '여행 당일 알림',
-                        value: _tripAlert,
-                        onChanged: (v) => setState(() => _tripAlert = v)),
+                        value: settings.tripAlert,
+                        onChanged: (v) {
+                          ref
+                              .read(notificationProvider.notifier)
+                              .updateSetting('notif_trip', v);
+                        }),
                   ]),
                 ],
               ),
