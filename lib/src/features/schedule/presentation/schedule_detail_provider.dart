@@ -55,6 +55,16 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
     }
   }
 
+  // 카테고리 로컬 업데이트 함수
+  void updateCategoryLocally(String scheduleId, ScheduleType newCategory) {
+    state = state.map((item) {
+      if (item.schedule_id.toString() == scheduleId.toString()) {
+        return item.copyWith(category: newCategory);
+      }
+      return item;
+    }).toList();
+  }
+
   // 메모 업데이트 (기존 유지)
   void updateMemo(String id, String memo) {
     state = state.map((item) {

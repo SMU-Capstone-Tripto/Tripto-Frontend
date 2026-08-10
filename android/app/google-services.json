@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "659333593204",
+    "project_id": "tripto-e6705",
+    "storage_bucket": "tripto-e6705.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:659333593204:android:da4f92fe5effe0de74f921",
+        "android_client_info": {
+          "package_name": "com.example.tripto"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6rcNRtv-0f8kMfPLCH5HCzsJeQghco0c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

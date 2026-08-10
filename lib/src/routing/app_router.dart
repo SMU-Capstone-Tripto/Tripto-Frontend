@@ -13,7 +13,6 @@ import '../features/schedule/presentation/screens/schedule_detail_screen.dart';
 import '../features/settings/presentation/screens/profile_screen.dart';
 import '../features/settings/presentation/screens/profile_edit_screen.dart';
 import '../features/settings/presentation/screens/password_change_screen.dart';
-import '../features/settings/presentation/screens/saved_places_screen.dart';
 import '../features/settings/presentation/screens/notification_setting_screen.dart';
 import '../features/settings/presentation/screens/app_info_screen.dart';
 import '../features/schedule/domain/travel_model.dart';
@@ -126,10 +125,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                       builder: (_, __) => const PasswordChangeScreen(),
                     ),
                   ],
-                ),
-                GoRoute(
-                  path: 'saved-places',
-                  builder: (_, __) => const SavedPlacesScreen(),
                 ),
                 GoRoute(
                   path: 'saved-schedules',

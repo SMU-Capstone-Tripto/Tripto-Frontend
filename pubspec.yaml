@@ -56,6 +56,8 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   flutter_naver_map: ^1.4.4
   share_plus: ^12.0.2
+  firebase_messaging: ^16.5.0
+  web_socket_channel: ^3.0.3
 
 # 개발 의존성 패키지 정의
 dev_dependencies:

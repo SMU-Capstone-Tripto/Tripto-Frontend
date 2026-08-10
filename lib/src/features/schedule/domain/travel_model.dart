@@ -2,6 +2,7 @@ enum TripStatus { upcoming, past }
 
 class TravelModel {
   final int travel_id;
+  final int owner_id;
   final String title;
   final String destination;
   final DateTime start_date;
@@ -10,6 +11,7 @@ class TravelModel {
 
   const TravelModel({
     required this.travel_id,
+    required this.owner_id,
     required this.title,
     required this.destination,
     required this.start_date,
@@ -45,6 +47,7 @@ class TravelModel {
 
     return TravelModel(
       travel_id: json['travel_id'] as int,
+      owner_id: json['owner_id'] as int,
       title: json['title'] as String? ?? '제목 없음',
       // 혹시 destination도 null로 올 때를 대비해 안전하게 처리
       destination: json['destination'] as String? ?? '',

@@ -183,7 +183,7 @@ class _PasswordChangeScreenState extends ConsumerState<PasswordChangeScreen> {
                         ),
                       ],
                     ),
-
+                    const SizedBox(height: 16),
                     // 새 비밀번호
                     _PwField(
                         label: '변경할 비밀번호',

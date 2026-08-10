@@ -124,6 +124,21 @@ class ScheduleRepository {
       throw Exception('시간 수정 실패: $e');
     }
   }
+
+  // 💡 서버에 카테고리 수정 요청 보내기
+  Future<void> updateScheduleCategory(
+      int scheduleId, String newCategory) async {
+    try {
+      await _dio.patch(
+        '/schedules/$scheduleId',
+        data: {
+          'category': newCategory,
+        },
+      );
+    } catch (e) {
+      throw Exception('카테고리 수정 실패: $e');
+    }
+  }
 }
 
 final scheduleRepositoryProvider = Provider<ScheduleRepository>((ref) {

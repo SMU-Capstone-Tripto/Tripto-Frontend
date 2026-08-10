@@ -1,4 +1,6 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
@@ -9,14 +11,14 @@ import 'package:go_router/go_router.dart';
 // 🔥 인증 전용 단일 스토리지 임포트
 import '../../../core/auth_storage.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isObscured = true;
   bool _isIdSaved = false;
   bool _isLoading = false;
@@ -37,6 +39,34 @@ class _LoginScreenState extends State<LoginScreen> {
   void _goToMain() {
     if (!mounted) return;
     context.go('/home');
+  }
+
+  Future<void> syncFcmTokenAfterLogin(WidgetRef ref) async {
+    try {
+      // 1. 파이어베이스로부터 최신 FCM 디바이스 토큰 발급
+      String? fcmToken = await FirebaseMessaging.instance.getToken();
+
+      if (fcmToken != null) {
+        // 2. 백엔드 내 정보 수정 API(PATCH /auth/me)를 찔러서 토큰 등록
+        final response = await http.patch(
+          Uri.parse('${AuthStorage.baseUrl}/auth/me'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization':
+                'Bearer ${AuthStorage.accessToken}', // 현재 저장된 토큰 활용
+          },
+          body: jsonEncode({'fcm_token': fcmToken}),
+        );
+
+        if (response.statusCode == 200) {
+          debugPrint('🟢 로그인 후 FCM 토큰 서버 동기화 완료');
+        } else {
+          debugPrint('⚠️ FCM 토큰 서버 동기화 실패: ${response.body}');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ FCM 토큰 동기화 에러: $e');
+    }
   }
 
   Future<void> _handleLocalLogin() async {
@@ -78,6 +108,8 @@ class _LoginScreenState extends State<LoginScreen> {
           refresh: refreshToken,
           userId: userId,
         );
+
+        await syncFcmTokenAfterLogin(ref);
 
         _goToMain();
       } else {

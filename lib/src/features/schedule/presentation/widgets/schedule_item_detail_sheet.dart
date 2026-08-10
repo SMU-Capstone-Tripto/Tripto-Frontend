@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 // 💡 실제 프로젝트의 ScheduleModel 경로로 맞춰주세요.
 import '../../../schedule/domain/travel_model.dart';
 import '../../data/schedule_repository.dart';
+import '../../domain/schedule_model.dart';
 import '../schedule_detail_provider.dart';
 
 // ── ✅ 바텀 시트를 띄워주는 함수 (에러 해결!) ──
@@ -140,16 +141,16 @@ class _ScheduleItemDetailSheetState
 
     // 3. 사용자가 취소하지 않고 시간을 골랐다면?
     if (picked != null) {
-      // 24시간 형식의 "HH:mm" 문자열로 변환
+      // 24시간 형식의 "HH:mm:ss" 문자열로 변환
       final newTimeStr =
-          '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+          '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}:00';
 
       try {
         final repository = ref.read(scheduleRepositoryProvider);
         final safeScheduleId = int.parse(widget.item.schedule_id);
 
         // 백엔드 API에 시간 수정 요청
-        await repository.updateScheduleTime(safeScheduleId, newTimeStr);
+        // await repository.updateScheduleTime(safeScheduleId, newTimeStr);
 
         // 프론트 화면 즉시 업데이트
         ref
@@ -180,6 +181,24 @@ class _ScheduleItemDetailSheetState
     if (lat == -90.0 || lng == -180.0) {
       lat = 38.1913;
       lng = 128.6035;
+    }
+
+    final String typeStr = widget.item.category.toString();
+    Color primaryColor; // 글자 및 아이콘 색상
+    Color bgColor; // 동그라미 및 뱃지 배경 색상
+
+    if (typeStr == 'ScheduleType.eat') {
+      primaryColor = const Color(0xFFFF9800); // 식사: 주황색
+      bgColor = const Color(0xFFFFF3E0);
+    } else if (typeStr == 'ScheduleType.stay') {
+      primaryColor = const Color(0xFF2196F3); // 숙소: 파란색
+      bgColor = const Color(0xFFE3F2FD);
+    } else if (typeStr == 'ScheduleType.move') {
+      primaryColor = const Color(0xFF9C27B0); // 이동: 보라색
+      bgColor = const Color(0xFFF3E5F5);
+    } else {
+      primaryColor = const Color(0xFF4CAF50); // 관광/기타: 초록색 (기본)
+      bgColor = const Color(0xFFE8F5E9);
     }
 
     return Container(
@@ -226,53 +245,139 @@ class _ScheduleItemDetailSheetState
               ),
               child: Row(
                 children: [
+                  // ── 💡 동그란 아이콘 영역 ──
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8F5E9),
+                      color: bgColor, // 🎨 배경색 자동 적용
                       borderRadius: BorderRadius.circular(99),
                     ),
-                    child: const Icon(Icons.explore_outlined,
-                        color: Color(0xFF4CAF50)),
+                    child: Icon(
+                      () {
+                        if (typeStr == 'ScheduleType.move')
+                          return Icons.directions_car_outlined;
+                        if (typeStr == 'ScheduleType.eat')
+                          return Icons.restaurant_outlined;
+                        if (typeStr == 'ScheduleType.stay')
+                          return Icons.hotel_outlined;
+                        return Icons.explore_outlined;
+                      }(),
+                      color: primaryColor, // 🎨 아이콘 색상 자동 적용
+                    ),
                   ),
+                  // ───────────────────────
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE8F5E9),
-                          borderRadius: BorderRadius.circular(8),
+                      // ── 💡 교체된 카테고리 드롭다운 뱃지 ──
+                      PopupMenuButton<String>(
+                        position: PopupMenuPosition.under,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(value: '관광', child: Text('관광')),
+                          const PopupMenuItem(value: '식사', child: Text('식사')),
+                          const PopupMenuItem(value: '숙소', child: Text('숙소')),
+                          const PopupMenuItem(value: '이동', child: Text('이동')),
+                          const PopupMenuItem(value: '기타', child: Text('기타')),
+                        ],
+                        onSelected: (String newValue) async {
+                          ScheduleType newType;
+                          switch (newValue) {
+                            case '이동':
+                              newType = ScheduleType.move;
+                              break;
+                            case '식사':
+                              newType = ScheduleType.eat;
+                              break;
+                            case '숙소':
+                              newType = ScheduleType.stay;
+                              break;
+                            default:
+                              newType = ScheduleType.activity;
+                              break;
+                          }
+                          try {
+                            ref
+                                .read(scheduleProvider.notifier)
+                                .updateCategoryLocally(
+                                    widget.item.schedule_id.toString(),
+                                    newType);
+                          } catch (e) {
+                            print('카테고리 변경 오류: $e');
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: bgColor, // 🎨 뱃지 배경색 자동 적용
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                () {
+                                  if (typeStr == 'ScheduleType.move')
+                                    return '이동';
+                                  if (typeStr == 'ScheduleType.eat')
+                                    return '식사';
+                                  if (typeStr == 'ScheduleType.stay')
+                                    return '숙소';
+                                  return '일정';
+                                }(),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: primaryColor, // 🎨 뱃지 글자색 자동 적용
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              Icon(Icons.arrow_drop_down,
+                                  size: 14,
+                                  color: primaryColor), // 🎨 화살표 색상 자동 적용
+                            ],
+                          ),
                         ),
-                        child: Text(widget.item.category?.toString() ?? '일정',
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF4CAF50),
-                                fontWeight: FontWeight.bold)),
                       ),
+                      // ─────────────────────────────────────
                       const SizedBox(height: 6),
+                      // ⏰ 시간 표시 영역
                       GestureDetector(
                         onTap: _editTime,
                         child: Row(
                           children: [
                             const Icon(Icons.access_time,
-                                size: 14, color: Color(0xFF6144B0)), // 보라색으로 강조
+                                size: 14, color: Color(0xFF6144B0)),
                             const SizedBox(width: 4),
                             Text(widget.item.start_time ?? '시간 미정',
                                 style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF6144B0))), // 보라색 굵은 글씨로 강조
+                                    color: Color(0xFF6144B0))),
                             const SizedBox(width: 4),
                             const Icon(Icons.edit,
-                                size: 12,
-                                color:
-                                    Color(0xFF6144B0)), // 수정 가능함을 보여주는 연필 아이콘
+                                size: 12, color: Color(0xFF6144B0)),
                           ],
                         ),
                       ),
+                      // ── 💡 예상 비용 표시 영역 ──
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.monetization_on_outlined,
+                              size: 14, color: Color(0xFF9993C4)),
+                          const SizedBox(width: 4),
+                          Text(
+                            '예상 비용: ${widget.item.cost ?? 0}원',
+                            style: const TextStyle(
+                                fontSize: 13, color: Color(0xFF9993C4)),
+                          ),
+                        ],
+                      ),
+                      // ────────────────────────────────
                     ],
                   ),
                 ],

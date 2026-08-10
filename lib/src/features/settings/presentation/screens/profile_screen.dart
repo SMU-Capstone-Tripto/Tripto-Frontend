@@ -11,7 +11,6 @@ import '../../../home/presentation/home_provider.dart';
 import '../../domain/profile_model.dart';
 import '../screens/saved_schedule_screen.dart';
 import '../profile_provider.dart';
-import '../screens/saved_places_screen.dart';
 import '../screens/app_info_screen.dart';
 import '../screens/notification_setting_screen.dart';
 import '../screens/profile_edit_screen.dart';
@@ -54,16 +53,16 @@ class ProfileScreen extends ConsumerWidget {
                           MaterialPageRoute(
                               builder: (_) => const SavedSchedulesScreen())),
                     ),
-                    _MenuItem(
-                      icon: Icons.favorite_outline,
-                      iconBg: const Color(0xFFFFF0F0),
-                      iconColor: const Color(0xFFD93030),
-                      label: '저장한 장소',
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const SavedPlacesScreen())),
-                    ),
+                    // _MenuItem(
+                    //   icon: Icons.favorite_outline,
+                    //   iconBg: const Color(0xFFFFF0F0),
+                    //   iconColor: const Color(0xFFD93030),
+                    //   label: '저장한 장소',
+                    //   onTap: () => Navigator.push(
+                    //       context,
+                    //       MaterialPageRoute(
+                    //           builder: (_) => const SavedPlacesScreen())),
+                    // ),
                   ]),
                   const SizedBox(height: 16),
                   const _SectionLabel('설정'),

@@ -11,6 +11,8 @@ import 'package:tripto/src/common_widgets/empty_state_widget.dart';
 import 'package:tripto/src/common_widgets/error_state_widget.dart';
 import 'package:tripto/src/common_widgets/skeleton/friend_skeleton.dart';
 
+import '../../domain/notification_model.dart';
+
 /// 홈 화면
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -30,8 +32,9 @@ class HomeScreen extends ConsumerWidget {
           SliverToBoxAdapter(
             child: _HomeHeader(
               trip: trip,
-              unreadCount: unreadCount,
-              onNotifTap: () => context.push('/home/notification'),
+              onNotifTap: () {
+                context.push('/home/notification'); // 기존 알림 화면으로 이동
+              },
               onScheduleTap: () =>
                   context.push('/schedule/detail', extra: trip!),
             ),

@@ -17,12 +17,12 @@ class NotificationRepository {
 
   // 2. 단일 알림 읽음 처리 (PATCH)
   Future<void> readNotification(int notificationId) async {
-    await _dio.patch('/api/v1/notifications/$notificationId/read');
+    await _dio.patch('/notifications/$notificationId/read');
   }
 
   // 3. 모든 알림 읽음 처리 (PATCH)
   Future<void> readAllNotifications() async {
-    await _dio.patch('/api/v1/notifications/read-all');
+    await _dio.patch('/notifications/read-all');
   }
 }
 
