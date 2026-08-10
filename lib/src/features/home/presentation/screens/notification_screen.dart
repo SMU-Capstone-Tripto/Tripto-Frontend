@@ -257,10 +257,38 @@ class _NotifItem extends StatelessWidget {
                       child: Row(
                         children: [
                           _ActionBtn(
-                              label: '수락', primary: true, onTap: onAccept),
+                            label: '수락',
+                            primary: true,
+                            // 💡 [방어 코드 적용]: 이미 읽었거나 처리된 알림인 경우 요청 차단
+                            onTap: () {
+                              if (notif.isRead) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('이미 확인되었거나 처리된 알림입니다.'),
+                                  ),
+                                );
+                                return; // 서버 요청을 아예 차단함
+                              }
+                              onAccept();
+                            },
+                          ),
                           const SizedBox(width: 8),
                           _ActionBtn(
-                              label: '거절', primary: false, onTap: onDecline),
+                            label: '거절',
+                            primary: false,
+                            // 💡 [거절 버튼에도 동일하게 방어 코드 적용]
+                            onTap: () {
+                              if (notif.isRead) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('이미 확인되었거나 처리된 알림입니다.'),
+                                  ),
+                                );
+                                return;
+                              }
+                              onDecline();
+                            },
+                          ),
                         ],
                       ),
                     ),

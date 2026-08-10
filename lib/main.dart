@@ -64,7 +64,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
 
-  // await Firebase.initializeApp();
+  await Firebase.initializeApp();
 
   // 🎯 [토큰 자동 복구 로직]: 디스크에 저장된 최신 토큰을 읽어서 AuthStorage 메모리에 수혈
   try {
