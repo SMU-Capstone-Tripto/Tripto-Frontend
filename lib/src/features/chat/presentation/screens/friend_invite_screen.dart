@@ -5,7 +5,7 @@ import 'package:tripto/src/core/auth_storage.dart';
 
 class FriendInviteScreen extends StatefulWidget {
   final int roomId;
-  final List<int> existingMemberIds; // 📌 기존 방 참여자 ID 목록
+  final List<int> existingMemberIds; 
 
   const FriendInviteScreen({
     super.key, 
@@ -90,12 +90,14 @@ class _FriendInviteScreenState extends State<FriendInviteScreen> {
                               item['profile_image']?.toString();
 
           if (id != null && id > 0) {
-            final bool isAlreadyInRoom = widget.existingMemberIds.contains(id);
+            // 📌 방에 참여 중인 유저 엄격 체크
+            final bool isAlreadyInRoom = widget.existingMemberIds.any((mId) => mId == id);
+
             parsed.add({
               'id': id,
               'name': name,
               'profile_image': img,
-              'is_already_in': isAlreadyInRoom, // 📌 이미 방에 참여 중인지 여부
+              'is_already_in': isAlreadyInRoom,
             });
           }
         }
@@ -123,6 +125,7 @@ class _FriendInviteScreenState extends State<FriendInviteScreen> {
       final String invitedNamesStr = _selectedFriendNames.join('님, ') + '님';
       final String systemInviteMessage = '$_myNickname님이 $invitedNamesStr을 초대했습니다.';
 
+      // 1. 초대 API 호출
       await http.post(
         Uri.parse('${AuthStorage.baseUrl}/chat/${widget.roomId}/invite'),
         headers: AuthStorage.authHeaders,
@@ -132,6 +135,7 @@ class _FriendInviteScreenState extends State<FriendInviteScreen> {
         }),
       );
 
+      // 2. 초대 시스템 메시지 직접 전송
       await http.post(
         Uri.parse('${AuthStorage.baseUrl}/chat/${widget.roomId}/messages'),
         headers: AuthStorage.authHeaders,
@@ -141,11 +145,17 @@ class _FriendInviteScreenState extends State<FriendInviteScreen> {
         }),
       );
 
+      // 📌 선택된 친구들의 최신 객체 정보 추출
+      final List<Map<String, dynamic>> invitedFriendsInfo = _allFriends
+          .where((f) => _selectedFriendIds.contains(f['id']))
+          .toList();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$invitedNamesStr 초대 완료!')),
         );
-        Navigator.pop(context, true);
+        // 설정 화면으로 초대한 친구 정보 결과 넘겨주기
+        Navigator.pop(context, invitedFriendsInfo);
       }
     } catch (e) {
       debugPrint('초대 통신 예외: $e');

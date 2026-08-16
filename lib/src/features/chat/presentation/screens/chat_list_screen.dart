@@ -263,6 +263,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
     } else if (selectedValue == 'leave') {
       final bool? confirm = await _showLeaveConfirmDialog(room.name);
       if (confirm == true && roomId > 0) {
+        // 🛠️ 에러 해결 위치: 위치 인자 형식으로 수정됨
         _leaveRoomSilently(roomId);
       }
     }
@@ -335,7 +336,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
       }
 
       try {
-        final baseUri = Uri.parse(AuthStorage.baseUrl);
+        final cleanBase = AuthStorage.baseUrl.trim().replaceAll('\n', '').replaceAll('\r', '');
+        final baseUri = Uri.parse(cleanBase);
         final origin = '${baseUri.scheme}://${baseUri.host}${baseUri.hasPort ? ':${baseUri.port}' : ''}';
         final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
         return '$origin$path';
@@ -345,14 +347,22 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
     }
 
     Widget singleMiniAvatar(Map<String, dynamic> profile, double size, {Color? bg}) {
-      final String nick = (profile['nickname'] ?? profile['name'] ?? profile['username'] ?? '유저').toString().trim();
-      final String pId = profile['id']?.toString() ?? '';
+      final dynamic target = profile['friend'] ?? profile['user'] ?? profile['profile'] ?? profile;
       
-      String? rawImg = profile['profile_image'] ?? 
-                       profile['profile_img'] ?? 
-                       profile['profile_image_url'] ?? 
-                       profile['image'] ?? 
-                       profile['user_image'] ?? 
+      final String nick = (target['nickname'] ?? target['name'] ?? target['username'] ?? profile['nickname'] ?? profile['name'] ?? '유저').toString().trim();
+      final String pId = target['id']?.toString() ?? profile['id']?.toString() ?? '';
+      
+      String? rawImg = target['profile_image'] ?? 
+                       target['profile_img'] ?? 
+                       target['profile_image_url'] ?? 
+                       target['image'] ?? 
+                       target['user_image'] ?? 
+                       target['avatar'] ??
+                       profile['profile_image'] ??
+                       profile['profile_img'] ??
+                       profile['profile_image_url'] ??
+                       profile['image'] ??
+                       profile['user_image'] ??
                        profile['avatar'];
 
       bool isMe = (myUserIdStr.isNotEmpty && pId == myUserIdStr) || 
@@ -429,7 +439,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
 
     final allRooms = ref.watch(sortedChatProvider);
 
-    // 🧹 [수정]: 동일한 roomId를 가진 채팅방 중복 생성 방지 (Deduplication)
     final Set<int> seenRoomIds = {};
     List<ChatModel> filteredRooms = [];
 

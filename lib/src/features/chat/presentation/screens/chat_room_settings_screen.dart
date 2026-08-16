@@ -83,7 +83,6 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
     _refreshRoomMembers();
   }
 
-  // 👥 최신 멤버 목록 및 새 유저의 닉네임/프로필 재동기화
   Future<void> _refreshRoomMembers() async {
     try {
       final response = await http.get(
@@ -101,7 +100,12 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
           final List<dynamic>? memberIds = currentRoom['member_ids'] ?? currentRoom['invited_user_ids'];
           if (memberIds != null) {
             setState(() {
-              _currentMemberIds = memberIds.map((id) => int.tryParse(id.toString()) ?? 0).where((id) => id > 0).toList();
+              for (var id in memberIds) {
+                int? parsedId = int.tryParse(id.toString());
+                if (parsedId != null && parsedId > 0 && !_currentMemberIds.contains(parsedId)) {
+                  _currentMemberIds.add(parsedId);
+                }
+              }
             });
           }
 
@@ -237,6 +241,7 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
     try {
       final String myNick = _localUserNames[_myUserId] ?? '유저';
       
+      // 📌 퇴장 알림 시스템 메시지 전송
       await http.post(
         Uri.parse('${AuthStorage.baseUrl}/chat/${widget.roomId}/messages'),
         headers: AuthStorage.authHeaders,
@@ -555,13 +560,33 @@ class _ChatRoomSettingsScreenState extends ConsumerState<ChatRoomSettingsScreen>
                     MaterialPageRoute(
                       builder: (_) => FriendInviteScreen(
                         roomId: widget.roomId,
-                        existingMemberIds: cleanMembers, // 📌 기존 방 참여자 ID 목록 전달
+                        existingMemberIds: cleanMembers,
                       ),
                     ),
                   ).then((res) {
-                    if (res == true) {
-                      _refreshRoomMembers(); // 📌 초대 완료 후 돌아왔을 때 인원 목록 실시간 갱신
+                    // 📌 [핵심]: 초대 후 넘어온 친구 객체 정보를 로컬 상태에 즉시 반영
+                    if (res is List<Map<String, dynamic>>) {
+                      setState(() {
+                        for (var friend in res) {
+                          final int? fId = friend['id'];
+                          final String? fName = friend['name'];
+                          final String? fImg = friend['profile_image'];
+
+                          if (fId != null && fId > 0) {
+                            if (!_currentMemberIds.contains(fId)) {
+                              _currentMemberIds.add(fId);
+                            }
+                            if (fName != null && fName.isNotEmpty) {
+                              _localUserNames[fId] = fName;
+                            }
+                            if (fImg != null && fImg.isNotEmpty) {
+                              _localUserImages[fId] = fImg;
+                            }
+                          }
+                        }
+                      });
                     }
+                    _refreshRoomMembers();
                   });
                 }),
 

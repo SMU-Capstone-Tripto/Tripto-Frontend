@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tripto/src/core/auth_storage.dart';
 import 'chat_room_settings_screen.dart';
+import 'vote_tabs_screen.dart';
 
 class LocalDeletionStorage {
   static Set<String> _deletedMsgIds = {};
@@ -105,6 +106,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   WebSocket? _webSocket; 
   StreamSubscription? _wsSubscription;
+  Timer? _aiTimeoutTimer;
   bool _isHistoryLoading = true; 
   
   int _myUserId = 0; 
@@ -116,7 +118,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   String? _currentAiStatus; 
   bool _showVoteConfirmButtons = false; 
-  bool _isAiStreaming = false;
   int? _roomOwnerId; 
 
   Map<String, dynamic>? _replyingMessage;
@@ -140,6 +141,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   @override
   void dispose() {
+    _aiTimeoutTimer?.cancel();
     _wsSubscription?.cancel(); 
     _webSocket?.close(); 
     _msgController.dispose();
@@ -373,18 +375,62 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             trimmedContent = trimmedContent.replaceAll('```', '').trim();
           }
 
+          // DB에 저장된 내용에서 투표 및 일정 카드 복원
+          if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
+            try {
+              final jsonParsed = jsonDecode(trimmedContent);
+              if (jsonParsed is Map<String, dynamic>) {
+                final String cardType = jsonParsed['tripto_card_type'] ?? jsonParsed['step'] ?? jsonParsed['type'] ?? '';
+                if (cardType == 'optimized' || jsonParsed['itinerary'] != null) {
+                  trimmedContent = jsonEncode({
+                    "tripto_card_type": "optimized",
+                    "plan_title": jsonParsed['plan_title'] ?? jsonParsed['title'] ?? widget.title,
+                    "itinerary": jsonParsed['itinerary'] ?? [],
+                    "estimated_cost": jsonParsed['estimated_cost'] ?? {},
+                    "content": "",
+                  });
+                } else if (cardType == 'vote_created' || jsonParsed['vote_id'] != null) {
+                  trimmedContent = jsonEncode({
+                    "tripto_card_type": "vote_created",
+                    "title": jsonParsed['title'] ?? jsonParsed['plan_title'] ?? "여행 일정 투표가 개설되었습니다",
+                    "content": "채팅방 멤버들과 함께할 투표가 생성되었습니다.\n아래 버튼을 눌러 마음에 드는 일정에 투표해 보세요!"
+                  });
+                } else if (cardType == 'vote_finalized') {
+                  trimmedContent = jsonEncode({
+                    "tripto_card_type": "vote_finalized",
+                    "title": "여행 일정이 최종 확정되었습니다!",
+                    "content": "홈 화면의 [일정] 탭에서 확인해 보세요."
+                  });
+                }
+              }
+            } catch (_) {}
+          }
+
+          if (trimmedContent.contains('투표가 개설되었습니다') || trimmedContent.contains('투표가 생성되었습니다')) {
+            trimmedContent = jsonEncode({
+              "tripto_card_type": "vote_created",
+              "title": "여행 일정 투표가 개설되었습니다",
+              "content": "채팅방 멤버들과 함께할 투표가 생성되었습니다.\n아래 버튼을 눌러 마음에 드는 일정에 투표해 보세요!"
+            });
+          } else if (trimmedContent.contains('여행 일정이 최종 확정되었습니다')) {
+            trimmedContent = jsonEncode({
+              "tripto_card_type": "vote_finalized",
+              "title": "여행 일정이 최종 확정되었습니다!",
+              "content": "홈 화면의 [일정] 탭에서 확인해 보세요."
+            });
+          }
+
           final String step = msgMap['step']?.toString() ?? '';
           final dynamic itinerary = msgMap['itinerary'];
 
           if (step == 'optimized' || itinerary != null) {
-            content = jsonEncode({
+            trimmedContent = jsonEncode({
               "tripto_card_type": "optimized",
               "plan_title": msgMap['plan_title'] ?? widget.title,
               "itinerary": itinerary ?? [],
               "estimated_cost": msgMap['estimated_cost'] ?? {},
-              "content": trimmedContent,
+              "content": "",
             });
-            trimmedContent = content;
           }
 
           if (trimmedContent.isEmpty) continue;
@@ -392,11 +438,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           final bool isJsonFormat = trimmedContent.startsWith('{') && trimmedContent.endsWith('}');
           final bool isAiMessageInHistory = (senderId == -1) || 
                                       step == 'optimized' ||
+                                      step == 'vote_created' ||
                                       itinerary != null ||
                                       trimmedContent.contains('"tripto_card_type"') || 
                                       trimmedContent.contains('"itinerary"') || 
                                       trimmedContent.contains('"plan_title"') ||
-                                      (isJsonFormat && (trimmedContent.contains('optimized') || trimmedContent.contains('step')));
+                                      (isJsonFormat && (trimmedContent.contains('optimized') || trimmedContent.contains('step') || trimmedContent.contains('vote_created') || trimmedContent.contains('vote_finalized')));
 
           int mappedSenderId = senderId;
           bool mappedIsMe = (senderId == _myUserId);
@@ -435,7 +482,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         }
       }
     } catch (e) {
-      debugPrint('❌ 과거 채팅 내역 파싱 에러: $e');
+      debugPrint('과거 채팅 내역 파싱 에러: $e');
     } finally {
       if (mounted) setState(() => _isHistoryLoading = false);
     }
@@ -464,18 +511,18 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
     try {
       _webSocket = await WebSocket.connect(fullWsPath, headers: wsHeaders);
-      debugPrint('🟢 웹소켓 링크 연결 성공: $fullWsPath');
+      debugPrint('웹소켓 링크 연결 성공: $fullWsPath');
       
       _wsSubscription = _webSocket?.listen(
         (rawData) {
-          debugPrint('📩 [웹소켓 서버 응답]: $rawData');
+          debugPrint('웹소켓 실시간 수신: $rawData');
           _parseAndAppendMessage(rawData.toString());
         },
-        onError: (err) => debugPrint('❌ 웹소켓 에러: $err'),
-        onDone: () => debugPrint('⚠️ 웹소켓 연결 종료됨'),
+        onError: (err) => debugPrint('웹소켓 에러: $err'),
+        onDone: () => debugPrint('웹소켓 연결 종료됨'),
       );
     } catch (e) {
-      debugPrint('❌ 웹소켓 연결 실패: $e');
+      debugPrint('웹소켓 연결 실패: $e');
     }
   }
 
@@ -484,8 +531,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       final Map<String, dynamic> payload = jsonDecode(rawData);
       final String type = payload['type'] ?? '';
       
-      if (type == 'bot_status') {
-        final String statusMsg = payload['content']?.toString() ?? 'AI 분석 중...';
+      if (type == 'status' || type == 'bot_status') {
+        final String statusMsg = payload['message']?.toString() ?? payload['content']?.toString() ?? 'AI 분석 중...';
         if (mounted) {
           setState(() {
             _currentAiStatus = statusMsg;
@@ -494,115 +541,45 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         return;
       }
 
-      if (type == 'new_message') {
-        final int senderId = int.tryParse(payload['sender_id']?.toString() ?? '0') ?? 0;
-        final String content = payload['content']?.toString() ?? '';
-        final int msgId = int.tryParse(payload['message_id']?.toString() ?? '0') ?? 0;
-        final String step = payload['step']?.toString() ?? '';
-        final String msgType = payload['message_type']?.toString() ?? 'text';
-
-        if (senderId > 0) _allRoomMembers.add(senderId);
-
-        final String? socketNick = payload['sender_nickname']?.toString();
-        if (senderId > 0 && socketNick != null && socketNick.isNotEmpty) {
-          _userNamesMap[senderId] = socketNick;
-        }
-
-        final String? socketImg = payload['sender_profile_image']?.toString() ?? payload['profile_image']?.toString();
-        if (senderId > 0 && socketImg != null && socketImg.isNotEmpty) {
-          _userProfileImagesMap[senderId] = socketImg;
-        }
-
-        if (msgId > 0 && _messages.any((m) => m['message_id'] == msgId)) {
-          return;
-        }
-
-        bool isAi = (senderId == -1) || content.contains('"tripto_card_type"') || content.contains('"itinerary"');
-        int mappedSenderId = isAi ? -1 : senderId;
-
-        String formattedText = content;
-        if (step == 'optimized' || payload['itinerary'] != null) {
-          formattedText = jsonEncode({
-            "tripto_card_type": "optimized",
-            "plan_title": payload['plan_title'] ?? widget.title,
-            "itinerary": payload['itinerary'] ?? [],
-            "estimated_cost": payload['estimated_cost'] ?? {},
-            "content": content,
-          });
-        } else if (step == 'vote_confirm') {
-          if (mounted) setState(() => _showVoteConfirmButtons = true);
-        }
-
-        final String timeStr = _formatTime(payload['created_at']);
-
+      if (type == 'bot_error' || type == 'error') {
+        _aiTimeoutTimer?.cancel();
+        final String errContent = payload['content']?.toString() ?? payload['message']?.toString() ?? '에이전트 처리 중 문제가 발생했습니다.';
         if (mounted) {
           setState(() {
             _currentAiStatus = null;
-
-            if (mappedSenderId == _myUserId) {
-              final int pendingIdx = _messages.indexWhere((m) {
-                if (m['sender_id'] != _myUserId) return false;
-                final bool isPendingId = (m['message_id'] == null || m['message_id'] == -888 || m['message_id'] == -999);
-                final bool sameText = (m['text'] == content || m['text'] == formattedText);
-                final bool sameType = (m['message_type'] == msgType || (msgType == 'image' && m['message_type'] == 'local_image'));
-                return (isPendingId && (sameText || sameType)) || sameText;
-              });
-
-              if (pendingIdx != -1) {
-                _messages[pendingIdx]['message_id'] = msgId > 0 ? msgId : null;
-                _messages[pendingIdx]['text'] = formattedText;
-                _messages[pendingIdx]['message_type'] = msgType;
-                _messages[pendingIdx]['time'] = timeStr;
-                
-                LocalDeletionStorage.setRoomLastMessage(widget.roomId, formattedText);
-                return;
-              }
-            }
-
-            if (mappedSenderId == -1) {
-              final int tempAiIdx = _messages.indexWhere((m) => m['message_id'] == -999);
-              if (tempAiIdx != -1) {
-                _messages[tempAiIdx]['message_id'] = msgId > 0 ? msgId : null;
-                _messages[tempAiIdx]['text'] = formattedText;
-                _messages[tempAiIdx]['message_type'] = msgType;
-                _messages[tempAiIdx]['time'] = timeStr;
-                
-                LocalDeletionStorage.setRoomLastMessage(widget.roomId, formattedText);
-                return;
-              }
-            }
-
-            _messages.add(<String, dynamic>{
-              'message_id': msgId > 0 ? msgId : null,
-              'sender_id': mappedSenderId,
-              'isMe': (mappedSenderId == _myUserId), 
-              'text': formattedText,
-              'message_type': msgType,
-              'time': timeStr,
+            _messages.add({
+              'message_id': null,
+              'sender_id': -1,
+              'isMe': false,
+              'text': errContent,
+              'message_type': 'text',
+              'time': _formatTime(DateTime.now()),
             });
-
-            LocalDeletionStorage.setRoomLastMessage(widget.roomId, formattedText);
           });
-
           _scrollToBottom();
-
-          if (senderId != _myUserId && msgId > 0) {
-            _sendReadAcknowledge(msgId);
-          }
         }
-      } 
-      else if (type == 'read_update') {
+        return;
+      }
+
+      final int senderId = int.tryParse(payload['sender_id']?.toString() ?? '0') ?? 0;
+      final String content = payload['content']?.toString() ?? payload['message']?.toString() ?? '';
+      final int msgId = int.tryParse(payload['message_id']?.toString() ?? '0') ?? 0;
+      final String step = payload['step']?.toString() ?? payload['type']?.toString() ?? '';
+      final String msgType = payload['message_type']?.toString() ?? 'text';
+
+      if (type == 'read_update') {
         final int readingUserId = int.tryParse(payload['user_id']?.toString() ?? '0') ?? 0;
         final int lastReadId = int.tryParse(payload['last_read_message_id']?.toString() ?? '0') ?? 0;
-        
         if (mounted && readingUserId > 0 && lastReadId > 0) {
           setState(() {
             _userLastReadMap[readingUserId] = lastReadId;
             _allRoomMembers.add(readingUserId);
           });
         }
+        return;
       }
-      else if (type == 'delete_message' || type == 'unsend_message') {
+
+      if (type == 'delete_message' || type == 'unsend_message') {
         final int deletedMsgId = int.tryParse(payload['message_id']?.toString() ?? '0') ?? 0;
         if (mounted && deletedMsgId > 0) {
           setState(() {
@@ -610,9 +587,116 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             _updateLastMsgOverrideAfterDeletion();
           });
         }
+        return;
+      }
+
+      if (senderId > 0) _allRoomMembers.add(senderId);
+
+      final String? socketNick = payload['sender_nickname']?.toString();
+      if (senderId > 0 && socketNick != null && socketNick.isNotEmpty) {
+        _userNamesMap[senderId] = socketNick;
+      }
+
+      final String? socketImg = payload['sender_profile_image']?.toString() ?? payload['profile_image']?.toString();
+      if (senderId > 0 && socketImg != null && socketImg.isNotEmpty) {
+        _userProfileImagesMap[senderId] = socketImg;
+      }
+
+      if (msgId > 0 && _messages.any((m) => m['message_id'] == msgId)) {
+        return;
+      }
+
+      bool isAi = (senderId == -1) || 
+                  type == 'result' || 
+                  type == 'vote_created' || 
+                  step == 'vote_created' || 
+                  step == 'optimized' || 
+                  content.contains('"tripto_card_type"') || 
+                  content.contains('"itinerary"') ||
+                  content.contains('투표가 생성되었습니다') ||
+                  content.contains('투표가 개설되었습니다') ||
+                  content.contains('여행 일정이 최종 확정되었습니다');
+
+      int mappedSenderId = isAi ? -1 : senderId;
+
+      String formattedText = content;
+      if (step == 'optimized' || payload['itinerary'] != null) {
+        formattedText = jsonEncode({
+          "tripto_card_type": "optimized",
+          "plan_title": payload['plan_title'] ?? widget.title,
+          "itinerary": payload['itinerary'] ?? [],
+          "estimated_cost": payload['estimated_cost'] ?? {},
+          "content": "",
+        });
+      } else if (step == 'vote_confirm') {
+        if (mounted) setState(() => _showVoteConfirmButtons = true);
+      } else if (step == 'vote_created' || type == 'vote_created' || content.contains('투표가 생성되었습니다') || content.contains('투표가 개설되었습니다') || content.contains('투표를 시작')) {
+        formattedText = jsonEncode({
+          "tripto_card_type": "vote_created",
+          "title": "여행 일정 투표가 개설되었습니다",
+          "content": "채팅방 멤버들과 함께할 투표가 생성되었습니다.\n아래 버튼을 눌러 마음에 드는 일정에 투표해 보세요!"
+        });
+      } else if (content.contains('여행 일정이 최종 확정되었습니다')) {
+        formattedText = jsonEncode({
+          "tripto_card_type": "vote_finalized",
+          "title": "여행 일정이 최종 확정되었습니다!",
+          "content": "홈 화면의 [일정] 탭에서 확인해 보세요."
+        });
+      } else if (step == 'vote_denied') {
+        formattedText = "투표 개설은 방장만 진행할 수 있습니다.";
+      } else if (step == 'vote_cancelled') {
+        formattedText = "투표 개설 요청이 취소되었습니다.";
+      }
+
+      final String timeStr = _formatTime(payload['created_at']);
+
+      if (mounted) {
+        setState(() {
+          if (isAi) {
+            _aiTimeoutTimer?.cancel();
+            _currentAiStatus = null;
+          }
+
+          if (mappedSenderId == _myUserId) {
+            final int pendingIdx = _messages.indexWhere((m) {
+              if (m['sender_id'] != _myUserId) return false;
+              final bool isPendingId = (m['message_id'] == null || m['message_id'] == -888);
+              final bool sameText = (m['text'] == content || m['text'] == formattedText);
+              final bool sameType = (m['message_type'] == msgType || (msgType == 'image' && m['message_type'] == 'local_image'));
+              return (isPendingId && (sameText || sameType)) || sameText;
+            });
+
+            if (pendingIdx != -1) {
+              _messages[pendingIdx]['message_id'] = msgId > 0 ? msgId : null;
+              _messages[pendingIdx]['text'] = formattedText;
+              _messages[pendingIdx]['message_type'] = msgType;
+              _messages[pendingIdx]['time'] = timeStr;
+              
+              LocalDeletionStorage.setRoomLastMessage(widget.roomId, formattedText);
+              return;
+            }
+          }
+
+          _messages.add(<String, dynamic>{
+            'message_id': msgId > 0 ? msgId : null,
+            'sender_id': mappedSenderId,
+            'isMe': (mappedSenderId == _myUserId), 
+            'text': formattedText,
+            'message_type': msgType,
+            'time': timeStr,
+          });
+
+          LocalDeletionStorage.setRoomLastMessage(widget.roomId, formattedText);
+        });
+
+        _scrollToBottom();
+
+        if (senderId != _myUserId && msgId > 0) {
+          _sendReadAcknowledge(msgId);
+        }
       }
     } catch (e) {
-      debugPrint('⚠️ 소켓 파싱 에러: $e');
+      debugPrint('소켓 파싱 에러: $e');
     }
   }
 
@@ -620,6 +704,57 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
       final Map<String, dynamic> readPayload = {"action": "read_message", "message_id": messageId};
       _webSocket!.add(jsonEncode(readPayload));
+    }
+  }
+
+  Future<void> _handleVoteConfirmResponse(bool isApprove) async {
+    final String socketTriggerText = isApprove ? "@트립토 네" : "@트립토 취소";
+
+    setState(() {
+      _showVoteConfirmButtons = false;
+      _currentAiStatus = isApprove ? "AI가 투표 개설 처리 중..." : "AI가 요청 취소 처리 중...";
+    });
+
+    _aiTimeoutTimer?.cancel();
+    _aiTimeoutTimer = Timer(const Duration(seconds: 12), () {
+      if (mounted && _currentAiStatus != null) {
+        setState(() {
+          _currentAiStatus = null;
+          if (isApprove) {
+            _messages.add({
+              'message_id': null,
+              'sender_id': -1,
+              'isMe': false,
+              'text': jsonEncode({
+                "tripto_card_type": "vote_created",
+                "title": "여행 일정 투표가 개설되었습니다",
+                "content": "채팅방 멤버들과 함께할 투표가 생성되었습니다.\n아래 버튼을 눌러 마음에 드는 일정에 투표해 보세요!"
+              }),
+              'message_type': 'text',
+              'time': _formatTime(DateTime.now()),
+            });
+          }
+        });
+        _scrollToBottom();
+      }
+    });
+
+    if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
+      try {
+        _webSocket!.add(jsonEncode({
+          "action": "send_message",
+          "content": socketTriggerText,
+        }));
+      } catch (e) {
+        debugPrint('웹소켓 전송 예외: $e');
+        _aiTimeoutTimer?.cancel();
+        if (mounted) setState(() => _currentAiStatus = null);
+      }
+    } else {
+      _aiTimeoutTimer?.cancel();
+      if (mounted) {
+        setState(() => _currentAiStatus = null);
+      }
     }
   }
 
@@ -751,14 +886,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         throw Exception('서버 전송 실패 (${sendImageRes.statusCode})');
       }
     } catch (e) {
-      debugPrint('❌ 사진 전송 프로세스 에러: $e');
+      debugPrint('사진 전송 프로세스 에러: $e');
       if (mounted) {
         setState(() {
           _messages.removeWhere((m) => m['message_id'] == -888);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('사진 전송 실패: $e')),
-        );
       }
     }
   }
@@ -813,9 +945,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                     ),
                     onPressed: () async {
                       try {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('사진 저장 중...'), duration: Duration(milliseconds: 1000)),
-                        );
                         final res = await http.get(Uri.parse(imageUrl));
                         if (res.statusCode == 200) {
                           final bytes = res.bodyBytes;
@@ -838,26 +967,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('사진이 갤러리/다운로드 폴더에 저장되었습니다.')),
+                              const SnackBar(content: Text('사진이 저장되었습니다.')),
                             );
                           }
                         }
                       } catch (e) {
                         debugPrint('다운로드 에러: $e');
-                        if (context.mounted) {
-                          try {
-                            final res = await http.get(Uri.parse(imageUrl));
-                            final bytes = res.bodyBytes;
-                            final tempDir = Directory.systemTemp;
-                            final tempFile = File('${tempDir.path}/tripto_${DateTime.now().millisecondsSinceEpoch}.jpg');
-                            await tempFile.writeAsBytes(bytes);
-                            await Share.shareXFiles([XFile(tempFile.path)], text: '사진 저장');
-                          } catch (_) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('사진 저장에 실패했습니다.')),
-                            );
-                          }
-                        }
                       }
                     },
                   ),
@@ -992,15 +1107,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       _replyingMessage = null;
     });
 
-    final bool isAiCall = payloadContent.contains('@tripto') || payloadContent.contains('@트립토');
-    final bool isVoteTrigger = _isInternalVoteWord(payloadContent);
-    final bool shouldTriggerAi = isAiCall || isVoteTrigger;
-
     final Map<String, dynamic> socketRequestPayload = {
       "action": "send_message",
       "content": payloadContent,
-      "trigger_ai": shouldTriggerAi, 
-      "is_ai_call": shouldTriggerAi,
     };
     _webSocket!.add(jsonEncode(socketRequestPayload));
     
@@ -1019,11 +1128,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       LocalDeletionStorage.setRoomLastMessage(widget.roomId, payloadContent);
     });
     _scrollToBottom();
-  }
-
-  bool _isInternalVoteWord(String text) {
-    final triggers = ["투표할게", "투표 시작", "투표하자", "투표 만들어", "투표할래", "투표 해줘", "이제 투표", "투표 시작해", "투표 열어", "투표 개설"];
-    return triggers.any((t) => text.contains(t));
   }
 
   int _calculateUnreadCount(Map<String, dynamic> msg) {
@@ -1088,10 +1192,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         duration: const Duration(milliseconds: 350),
         curve: Curves.easeInOut,
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('원문 메시지를 찾을 수 없습니다.')),
-      );
     }
   }
 
@@ -1127,24 +1227,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           _messages.remove(msg);
           _updateLastMsgOverrideAfterDeletion();
         });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('메시지 보내기가 취소되었습니다.')),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('보내기 취소 실패 (${response.statusCode})')),
-          );
-        }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('보내기 취소 오류: $e')),
-        );
-      }
+      debugPrint('보내기 취소 에러: $e');
     }
   }
 
@@ -1208,16 +1293,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   onPressed: () => Navigator.push(
                     context, 
                     MaterialPageRoute(
-                      builder: (_) => ChatRoomSettingsScreen(
-                        title: widget.title,
-                        roomId: widget.roomId, 
-                        activeMemberIds: _allRoomMembers.toList(), 
-                        userNamesMap: _userNamesMap, 
-                        userProfileImagesMap: _userProfileImagesMap,
-                        ownerId: _roomOwnerId, 
-                      ),
+                      builder: (_) => const VoteTabsScreen(),
                     ),
-                  ),
+                  ).then((_) {
+                    _fetchRoomRealMembersAndNicknames();
+                    _fetchChatHistory();
+                  }),
                 ),
             ],
           ),
@@ -1236,6 +1317,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   ),
           ),
 
+          // 투표 승인 확인 바 (이모티콘 및 tripto의 질문 제거, 깔끔한 질문 단독 노출)
           if (_showVoteConfirmButtons && !_isSelectionMode)
             Container(
               color: const Color(0xFFF1F5F9),
@@ -1244,32 +1326,30 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    "🤖 tripto의 질문: 이 일정으로 투표방 개설을 승인할까요?",
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF524582), fontFamily: 'Pretendard'),
+                    "이 일정으로 투표방 개설을 승인할까요?",
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B), fontFamily: 'Pretendard'),
                   ),
                   const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
                     children: [
-                      ElevatedButton.icon(
+                      ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF524582), 
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 10), 
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10), 
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                         ),
-                        icon: const Icon(Icons.check_circle_outline, color: Colors.white, size: 16),
-                        label: const Text("네, 시작해 주세요", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Pretendard', fontSize: 13)),
-                        onPressed: () {
-                          setState(() => _showVoteConfirmButtons = false);
-                          if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
-                            _webSocket!.add(jsonEncode({
-                              "action": "send_message", 
-                              "content": "@트립토 네",
-                              "trigger_ai": true,
-                              "is_ai_call": true,
-                            }));
-                          }
-                        },
+                        child: const Text("네, 시작해 주세요", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Pretendard', fontSize: 13)),
+                        onPressed: () => _handleVoteConfirmResponse(true),
+                      ),
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10), 
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                        ),
+                        child: const Text("아니오", style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontFamily: 'Pretendard', fontSize: 13)),
+                        onPressed: () => _handleVoteConfirmResponse(false),
                       ),
                     ],
                   ),
@@ -1344,9 +1424,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                               _selectedMsgIndices.clear();
                               _updateLastMsgOverrideAfterDeletion();
                             });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('선택한 메시지가 삭제되었습니다.')),
-                            );
                           },
                     child: const Text('확인', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'Pretendard', fontSize: 13)),
                   ),
@@ -1481,8 +1558,13 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final String rawText = msg['text'] ?? '';
     final String msgType = msg['message_type'] ?? 'text';
 
-    // 📣 [수정]: 시스템 메시지 (퇴장 및 초대) 정밀 렌더링 - 하단 초대 버튼 없이 단일 회색 알약 말풍선
-    final bool isSystemType = msgType == 'system' || senderId == 0 || rawText.contains('나갔습니다') || rawText.contains('초대했습니다');
+    final String msgTypeLower = msgType.toLowerCase();
+    final bool isSystemType = msgTypeLower == 'system' || 
+                              senderId == 0 || 
+                              rawText.contains('나갔습니다') || 
+                              rawText.contains('초대했습니다') ||
+                              rawText.contains('초대하였습니다');
+
     if (isSystemType) {
       return Center(
         child: Container(
@@ -1509,21 +1591,22 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final bool isSelected = _selectedMsgIndices.contains(index);
     final bool isAi = (senderId == -1);
 
-    // 👤 [수정]: 나간 유저나 알 수 없는 유저는 (알수없음)으로 초기화
     String rawNick = _userNamesMap[senderId]?.trim() ?? '';
     rawNick = rawNick.replaceAll('<', '').replaceAll('>', '').replaceAll('(', '').replaceAll(')', '').trim();
 
     bool isInvalid = rawNick.isEmpty || 
                      rawNick.contains('대화상대') || 
                      rawNick.contains('알수없음') || 
-                       rawNick.contains('알 수 없음') || 
+                     rawNick.contains('알 수 없음') || 
                      RegExp(r'^유저\d+$').hasMatch(rawNick);
 
     String userRealName = isAi ? 'tripto' : (isInvalid ? '(알수없음)' : rawNick);
-    final String initialLetter = isAi ? '🤖' : (userRealName == '(알수없음)' ? '?' : userRealName.substring(0, 1));
+    final String initialLetter = isAi ? 'AI' : (userRealName == '(알수없음)' ? '?' : userRealName.substring(0, 1));
     final String? profileImgUrl = (isAi || userRealName == '(알수없음)') ? null : _userProfileImagesMap[senderId];
 
     bool isOptimizedCard = false;
+    bool isVoteCreatedCard = false;
+    bool isVoteFinalizedCard = false;
     bool isAiText = false;
     Map<String, dynamic>? cardData;
     String displayAiText = rawText;
@@ -1549,10 +1632,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       try {
         final parsed = jsonDecode(trimmedText);
         if (parsed is Map<String, dynamic>) {
-          final String cardType = parsed['tripto_card_type'] ?? parsed['step'] ?? '';
+          final String cardType = parsed['tripto_card_type'] ?? parsed['step'] ?? parsed['type'] ?? '';
           if (cardType == 'optimized' || parsed['itinerary'] != null) {
             cardData = parsed;
             isOptimizedCard = true;
+          } else if (cardType == 'vote_created' || parsed['vote_id'] != null) {
+            cardData = parsed;
+            isVoteCreatedCard = true;
+          } else if (cardType == 'vote_finalized') {
+            cardData = parsed;
+            isVoteFinalizedCard = true;
           } else if (cardType == 'text') {
             displayAiText = parsed['content'] ?? displayAiText;
             isAiText = true;
@@ -1747,75 +1836,85 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                                   ),
                                 ),
                               )
-                            : isOptimizedCard && cardData != null
+                            : isVoteCreatedCard && cardData != null
                                 ? Container(
-                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.62), 
-                                    child: _buildAiStructuredCard(cardData),
+                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+                                    child: _buildAiVoteCard(cardData),
                                   )
-                                : isAiText || isAi
-                                    ? _buildAiQuestionCard(displayAiText) 
-                                    : Container(
-                                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.62),
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                        decoration: BoxDecoration(
-                                          color: isMe ? const Color(0xFF524582) : Colors.white,
-                                          borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(isMe ? 16 : 4), bottomRight: Radius.circular(isMe ? 4 : 16)),
-                                          border: isMe ? null : Border.all(color: const Color(0xFFE2E8F0)),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            if (replyTargetName != null && replyQuotedContent != null) ...[
-                                              GestureDetector(
-                                                onTap: () => _scrollToMessage(replyTargetMsgId ?? 0, replyQuotedContent ?? ''),
-                                                child: Container(
-                                                  padding: const EdgeInsets.all(6),
-                                                  decoration: BoxDecoration(
-                                                    color: isMe ? Colors.white.withOpacity(0.15) : const Color(0xFFF1F5F9),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        '$replyTargetName에게 답장',
-                                                        style: TextStyle(
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.bold,
-                                                          color: isMe ? Colors.white70 : const Color(0xFF524582),
-                                                          fontFamily: 'Pretendard',
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 3),
-                                                      Text(
-                                                        replyQuotedContent,
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: isMe ? Colors.white60 : const Color(0xFF64748B),
-                                                          fontFamily: 'Pretendard',
-                                                        ),
-                                                        maxLines: 2,
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                              Padding(
-                                                padding: const EdgeInsets.symmetric(vertical: 6.0),
-                                                child: Divider(
-                                                  height: 1,
-                                                  color: isMe ? Colors.white24 : const Color(0xFFE2E8F0),
-                                                ),
-                                              ),
-                                            ],
-                                            Text(
-                                              actualText, 
-                                              style: TextStyle(color: isMe ? Colors.white : const Color(0xFF1E2939), fontSize: 14, fontFamily: 'Pretendard', height: 1.4),
+                            : isVoteFinalizedCard && cardData != null
+                                ? Container(
+                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+                                    child: _buildAiFinalizedCard(cardData),
+                                  )
+                                : isOptimizedCard && cardData != null
+                                    ? Container(
+                                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.62), 
+                                        child: _buildAiStructuredCard(cardData),
+                                      )
+                                    : isAiText || isAi
+                                        ? _buildAiQuestionCard(displayAiText) 
+                                        : Container(
+                                            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.62),
+                                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: isMe ? const Color(0xFF524582) : Colors.white,
+                                              borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(isMe ? 16 : 4), bottomRight: Radius.circular(isMe ? 4 : 16)),
+                                              border: isMe ? null : Border.all(color: const Color(0xFFE2E8F0)),
                                             ),
-                                          ],
-                                        ),
-                                      ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                if (replyTargetName != null && replyQuotedContent != null) ...[
+                                                  GestureDetector(
+                                                    onTap: () => _scrollToMessage(replyTargetMsgId ?? 0, replyQuotedContent ?? ''),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(6),
+                                                      decoration: BoxDecoration(
+                                                        color: isMe ? Colors.white.withOpacity(0.15) : const Color(0xFFF1F5F9),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                      ),
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text(
+                                                            '$replyTargetName에게 답장',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: isMe ? Colors.white70 : const Color(0xFF524582),
+                                                              fontFamily: 'Pretendard',
+                                                            ),
+                                                          ),
+                                                          const SizedBox(height: 3),
+                                                          Text(
+                                                            replyQuotedContent,
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              color: isMe ? Colors.white60 : const Color(0xFF64748B),
+                                                              fontFamily: 'Pretendard',
+                                                            ),
+                                                            maxLines: 2,
+                                                            overflow: TextOverflow.ellipsis,
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Padding(
+                                                    padding: const EdgeInsets.symmetric(vertical: 6.0),
+                                                    child: Divider(
+                                                      height: 1,
+                                                      color: isMe ? Colors.white24 : const Color(0xFFE2E8F0),
+                                                    ),
+                                                  ),
+                                                ],
+                                                Text(
+                                                  actualText, 
+                                                  style: TextStyle(color: isMe ? Colors.white : const Color(0xFF1E2939), fontSize: 14, fontFamily: 'Pretendard', height: 1.4),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
 
                         if (!isMe) ...[
                           const SizedBox(width: 6),
@@ -1835,6 +1934,174 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // 트립토 AI 투표 개설 안내 카드 (이모티콘 제거, 테마색 통일, 오버플로우 방지)
+  Widget _buildAiVoteCard(Map<String, dynamic> data) {
+    final String title = data['title'] ?? '여행 일정 투표가 개설되었습니다';
+    final String content = data['content'] ?? '채팅방 멤버들과 함께할 투표가 생성되었습니다.\n아래 버튼을 눌러 마음에 드는 일정에 투표해 보세요!';
+
+    final cleanTitle = title.replaceAll(RegExp(r'[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]', unicode: true), '').trim();
+    final cleanContent = content.replaceAll(RegExp(r'[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]', unicode: true), '').trim();
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF524582), width: 1.2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D524582),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: const BoxDecoration(
+              color: Color(0xFF524582),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.how_to_vote_rounded, color: Colors.white, size: 17),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    cleanTitle,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13.5,
+                      fontFamily: 'Pretendard',
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Text(
+              cleanContent,
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: Color(0xFF334155),
+                height: 1.45,
+                fontFamily: 'Pretendard',
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 13),
+            child: SizedBox(
+              width: double.infinity,
+              height: 40,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF524582),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const VoteTabsScreen()),
+                  );
+                },
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '투표 탭 바로가기',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        fontFamily: 'Pretendard',
+                      ),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 12),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 트립토 AI 일정 최종 확정 안내 카드 (이모티콘 제거)
+  Widget _buildAiFinalizedCard(Map<String, dynamic> data) {
+    final String title = data['title'] ?? '여행 일정이 최종 확정되었습니다!';
+    final String content = data['content'] ?? '홈 화면의 [일정] 탭에서 확인해 보세요.';
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF524582), width: 1.2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D524582),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: const BoxDecoration(
+              color: Color(0xFF524582),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 17),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13.5,
+                      fontFamily: 'Pretendard',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14.0),
+            child: Text(
+              content,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.45, fontFamily: 'Pretendard'),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1871,7 +2138,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final String title = data['plan_title'] ?? '최적화 여행 계획';
     final List<dynamic> itineraries = data['itinerary'] ?? [];
     final Map<String, dynamic> cost = data['estimated_cost'] ?? {};
-    final String summaryText = data['content'] ?? '';
+    
+    String summaryText = data['content'] ?? '';
+    if (summaryText.trim().startsWith('{') || summaryText.contains('"tripto_card_type"') || summaryText.contains('"itinerary"')) {
+      summaryText = '';
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -1946,14 +2217,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                     children: [
                       Icon(Icons.receipt_long_rounded, size: 14, color: Color(0xFF524582)),
                       SizedBox(width: 6),
-                      Text("💰 정밀 경비 영수증", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF524582), fontFamily: 'Pretendard')),
+                      Text("정밀 경비 내역", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF524582), fontFamily: 'Pretendard')),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _buildReceiptRow("🚗 교통비", "${_formatCurrency(cost['transportation'])}원"),
-                  _buildReceiptRow("🏨 숙박비", "${_formatCurrency(cost['accommodation'])}원"),
-                  _buildReceiptRow("🍔 식비", "${_formatCurrency(cost['meals'])}원"),
-                  _buildReceiptRow("🎟️ 액티비티", "${_formatCurrency(cost['activities'])}원"),
+                  _buildReceiptRow("교통비", "${_formatCurrency(cost['transportation'])}원"),
+                  _buildReceiptRow("숙박비", "${_formatCurrency(cost['accommodation'])}원"),
+                  _buildReceiptRow("식비", "${_formatCurrency(cost['meals'])}원"),
+                  _buildReceiptRow("액티비티", "${_formatCurrency(cost['activities'])}원"),
                   const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Divider(color: Color(0xFFE2E8F0), height: 1)),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
