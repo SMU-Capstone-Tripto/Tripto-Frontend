@@ -1,18 +1,19 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:tripto/src/core/auth_storage.dart';
 
-class ChatDetailVoteScreen extends StatefulWidget {
+class ChatDetailVoteScreen extends ConsumerStatefulWidget {
   final int voteId;
 
   const ChatDetailVoteScreen({super.key, required this.voteId});
 
   @override
-  State<ChatDetailVoteScreen> createState() => _ChatDetailVoteScreenState();
+  ConsumerState<ChatDetailVoteScreen> createState() => _ChatDetailVoteScreenState();
 }
 
-class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
+class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
   int _expandedIndex = 0; 
   Map<String, dynamic>? _voteDetail;
   bool _isLoading = true;
@@ -138,7 +139,7 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('여행 일정이 최종 확정되었습니다. 홈 화면의 일정 탭에서 확인하세요.')),
           );
-          Navigator.pop(context, true); // 확정 완료 플래그 반환
+          Navigator.pop(context, true); // 확정 플래그 반환
         }
       } else {
         final err = jsonDecode(utf8.decode(response.bodyBytes));
@@ -153,6 +154,14 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
     } finally {
       if (mounted) setState(() => _isActionLoading = false);
     }
+  }
+
+  String _formatCurrency(dynamic value) {
+    if (value == null) return '0';
+    final raw = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
+    final intVal = int.tryParse(raw);
+    if (intVal == null) return value.toString();
+    return intVal.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
   }
 
   @override
@@ -206,7 +215,7 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -244,11 +253,11 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text(mainTitle, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Color(0xFF1E293B), fontFamily: 'Pretendard')),
+                  Text(mainTitle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B), fontFamily: 'Pretendard')),
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Icon(Icons.people_alt_outlined, size: 15, color: Color(0xFF64748B)),
+                      const Icon(Icons.how_to_vote_outlined, size: 15, color: Color(0xFF64748B)),
                       const SizedBox(width: 4),
                       Text('총 $totalVotesCount명 투표 참여', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontFamily: 'Pretendard')),
                     ],
@@ -256,7 +265,7 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
 
             if (snapshots.isEmpty)
               const Center(child: Padding(padding: EdgeInsets.all(40), child: Text('투표 가능한 일정 후보가 없습니다.', style: TextStyle(color: Colors.grey, fontFamily: 'Pretendard'))))
@@ -266,6 +275,7 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
                   index: i,
                   snapshot: snapshots[i],
                   voteCount: voteCountMap[int.tryParse(snapshots[i]['snapshot_id']?.toString() ?? '') ?? 0] ?? 0,
+                  totalVotes: totalVotesCount,
                   isMyVoted: myVotedSnapshotId == (int.tryParse(snapshots[i]['snapshot_id']?.toString() ?? '') ?? 0),
                   isActive: isActive,
                 ),
@@ -281,6 +291,7 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
     required int index,
     required dynamic snapshot,
     required int voteCount,
+    required int totalVotes,
     required bool isMyVoted,
     required bool isActive,
   }) {
@@ -288,6 +299,9 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
     final int snapshotId = int.tryParse(snapshot['snapshot_id']?.toString() ?? '0') ?? 0;
     final String title = snapshot['plan_title'] ?? '일정 후보 ${index + 1}';
     final List<dynamic> itineraries = snapshot['itinerary'] ?? [];
+    final Map<String, dynamic> cost = snapshot['estimated_cost'] is Map ? snapshot['estimated_cost'] : {};
+
+    final double ratio = totalVotes > 0 ? (voteCount / totalVotes) : 0.0;
 
     return Container(
       decoration: BoxDecoration(
@@ -299,8 +313,8 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: isMyVoted ? const Color(0x14524582) : const Color(0x08000000),
-            blurRadius: 10,
+            color: isMyVoted ? const Color(0x14524582) : const Color(0x06000000),
+            blurRadius: 8,
             offset: const Offset(0, 3),
           )
         ],
@@ -308,22 +322,30 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
       child: Column(
         children: [
           ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             title: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: isMyVoted ? const Color(0xFF524582) : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text('후보 ${index + 1}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF475569), fontFamily: 'Pretendard')),
+                  child: Text(
+                    '후보 ${index + 1}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isMyVoted ? Colors.white : const Color(0xFF475569),
+                      fontFamily: 'Pretendard',
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5, color: Color(0xFF1E293B), fontFamily: 'Pretendard'),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1E293B), fontFamily: 'Pretendard'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -331,9 +353,9 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
                 if (isMyVoted)
                   Container(
                     margin: const EdgeInsets.only(left: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(color: const Color(0xFFEDE9FE), borderRadius: BorderRadius.circular(6)),
-                    child: const Text('내 선택', style: TextStyle(color: Color(0xFF524582), fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+                    child: const Text('내 선택', style: TextStyle(color: Color(0xFF524582), fontSize: 10.5, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
                   ),
               ],
             ),
@@ -343,34 +365,78 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
           if (isExpanded) ...[
             const Divider(height: 1, color: Color(0xFFF1F5F9)),
             Padding(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 💡 1일차/2일차 핑 연결 없는 정갈한 타임라인
                   if (itineraries.isNotEmpty) ...[
                     for (int dayIdx = 0; dayIdx < itineraries.length; dayIdx++) ...[
-                      _buildCleanDayTimeline(dayIdx + 1, itineraries[dayIdx]),
+                      _buildCleanDaySection(dayIdx + 1, itineraries[dayIdx]),
                       if (dayIdx < itineraries.length - 1) const SizedBox(height: 16),
                     ],
                   ] else
                     const Text('등록된 일정이 없습니다.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5, fontFamily: 'Pretendard')),
                   
-                  const SizedBox(height: 18),
+                  // 경비 내역 카드
+                  if (cost.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFAF5FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFEDE9FE)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('예상 경비 내역', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF524582), fontFamily: 'Pretendard')),
+                          const SizedBox(height: 6),
+                          _buildCostRow('교통비', '${_formatCurrency(cost['transportation'])}원'),
+                          _buildCostRow('숙박비', '${_formatCurrency(cost['accommodation'])}원'),
+                          _buildCostRow('식비', '${_formatCurrency(cost['meals'])}원'),
+                          _buildCostRow('액티비티', '${_formatCurrency(cost['activities'])}원'),
+                          const Divider(height: 12, color: Color(0xFFE2E8F0)),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('총 합계', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B), fontFamily: 'Pretendard')),
+                              Text('${_formatCurrency(cost['total'])}원', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF524582), fontFamily: 'Pretendard')),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
                   
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('현재 득표수', style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontFamily: 'Pretendard', fontWeight: FontWeight.w500)),
-                      Text('$voteCount표', style: const TextStyle(color: Color(0xFF524582), fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Pretendard')),
+                      const Text('현재 득표수', style: TextStyle(color: Color(0xFF64748B), fontSize: 12.5, fontFamily: 'Pretendard')),
+                      Text('$voteCount표 (${(ratio * 100).toInt()}%)', style: const TextStyle(color: Color(0xFF524582), fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Pretendard')),
                     ],
                   ),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: ratio,
+                      backgroundColor: const Color(0xFFF1F5F9),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF524582)),
+                      minHeight: 6,
+                    ),
+                  ),
                   const SizedBox(height: 14),
+
                   if (isActive)
                     SizedBox(
                       width: double.infinity,
-                      height: 44,
+                      height: 42,
                       child: ElevatedButton(
                         onPressed: isMyVoted ? null : () => _castVote(snapshotId),
                         style: ElevatedButton.styleFrom(
@@ -384,7 +450,7 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
                           style: TextStyle(
                             color: isMyVoted ? const Color(0xFF94A3B8) : Colors.white,
                             fontWeight: FontWeight.bold,
-                            fontSize: 13.5,
+                            fontSize: 13,
                             fontFamily: 'Pretendard',
                           ),
                         ),
@@ -399,60 +465,153 @@ class _ChatDetailVoteScreenState extends State<ChatDetailVoteScreen> {
     );
   }
 
-  // 타임라인 가독성 강화 뷰
-  Widget _buildCleanDayTimeline(int dayNum, dynamic dayData) {
+  Widget _buildCostRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontFamily: 'Pretendard')),
+          Text(value, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF334155), fontFamily: 'Pretendard')),
+        ],
+      ),
+    );
+  }
+
+  // 💡 1일차/2일차 헤더는 독립된 칩으로 표시하고, 내부 실제 일정 줄에만 핑 연결
+  Widget _buildCleanDaySection(int dayNum, dynamic dayData) {
     final String dayStr = dayData.toString().trim();
     final List<String> lines = dayStr.split('\n');
+    final List<Map<String, dynamic>> validActivities = [];
+
+    for (var line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      // '1일차', '[1일차 - ...]' 같은 헤더 제목 줄은 타임라인 노드에서 제외
+      if (trimmed.startsWith('[') && trimmed.contains('일차')) continue;
+      if (trimmed.contains('${dayNum}일차') && trimmed.length < 15) continue;
+
+      final timeRegex = RegExp(r'^(\d{2}:\d{2}(?:\s*(?:~|-|→|->)\s*\d{2}:\d{2})?|\d{2}:\d{2})\s*(.*)');
+      final match = timeRegex.firstMatch(trimmed);
+
+      String time = '';
+      String text = trimmed;
+      if (match != null) {
+        time = match.group(1) ?? '';
+        text = match.group(2) ?? '';
+      }
+
+      IconData icon = Icons.place_rounded;
+      Color iconColor = const Color(0xFF524582);
+
+      final lower = text.toLowerCase();
+      final bool isTransit = text.contains('→') || text.contains('->') || lower.contains('이동') || lower.contains('탑승');
+      if (isTransit) {
+        icon = Icons.directions_car_rounded;
+        iconColor = const Color(0xFF367BC3);
+      } else if (lower.contains('식사') || lower.contains('맛집') || lower.contains('점심') || lower.contains('저녁') || lower.contains('식당')) {
+        icon = Icons.restaurant_rounded;
+        iconColor = const Color(0xFF38BFA7);
+      } else if (lower.contains('카페') || lower.contains('커피') || lower.contains('디저트')) {
+        icon = Icons.local_cafe_rounded;
+        iconColor = const Color(0xFF38BFA7);
+      } else if (lower.contains('호텔') || lower.contains('숙소') || lower.contains('체크인') || lower.contains('펜션')) {
+        icon = Icons.hotel_rounded;
+        iconColor = const Color(0xFF10B981);
+      }
+
+      validActivities.add({
+        'time': time,
+        'text': text,
+        'icon': icon,
+        'color': iconColor,
+      });
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFF524582),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text('$dayNum일차', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
+        // 독립된 일차 헤더 칩 (핑 연결 없음)
         Container(
-          padding: const EdgeInsets.only(left: 10),
-          decoration: const BoxDecoration(
-            border: Border(left: BorderSide(color: Color(0xFFE2E8F0), width: 2)),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+          decoration: BoxDecoration(
+            color: const Color(0xFF524582),
+            borderRadius: BorderRadius.circular(6),
           ),
+          child: Text('$dayNum일차', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+        ),
+        const SizedBox(height: 10),
+        // 실제 일정 아이템들만 타임라인으로 연결
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: lines.map((line) {
-              final trimmed = line.trim();
-              if (trimmed.isEmpty || (trimmed.contains('일차') && trimmed.length < 8)) return const SizedBox.shrink();
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3.5),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(top: 6, right: 8),
-                      child: Icon(Icons.circle, size: 4, color: Color(0xFF524582)),
-                    ),
-                    Expanded(
-                      child: Text(
-                        trimmed,
-                        style: const TextStyle(color: Color(0xFF334155), fontSize: 13, height: 1.4, fontFamily: 'Pretendard'),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
+            children: [
+              for (int idx = 0; idx < validActivities.length; idx++)
+                _buildTimelineNode(validActivities[idx], idx == validActivities.length - 1),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTimelineNode(Map<String, dynamic> item, bool isLast) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: (item['color'] as Color).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(item['icon'] as IconData, size: 12, color: item['color'] as Color),
+              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 1.5,
+                    color: const Color(0xFFE2E8F0),
+                    margin: const EdgeInsets.symmetric(vertical: 2),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (item['time'].toString().isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        item['time'],
+                        style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF475569), fontFamily: 'Pretendard'),
+                      ),
+                    ),
+                  Text(
+                    item['text'],
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B), height: 1.35, fontFamily: 'Pretendard'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

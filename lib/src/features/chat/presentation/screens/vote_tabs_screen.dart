@@ -5,7 +5,7 @@ import 'package:tripto/src/core/auth_storage.dart';
 import 'chat_detail_vote_screen.dart';
 
 class VoteTabsScreen extends StatefulWidget {
-  final int initialTabIndex; // 완료 탭(1)으로 직접 전환 가능
+  final int initialTabIndex; 
 
   const VoteTabsScreen({super.key, this.initialTabIndex = 0});
 
@@ -62,7 +62,6 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
           rawList = decoded['votes'] ?? decoded['data'] ?? [];
         }
 
-        // 최신 생성 순으로 정렬
         rawList.sort((a, b) {
           final int aId = int.tryParse(a['vote_id']?.toString() ?? '0') ?? 0;
           final int bId = int.tryParse(b['vote_id']?.toString() ?? '0') ?? 0;
@@ -200,8 +199,9 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
                 ),
               ).then((result) {
                 if (result == true) {
-                  // 일정 확정 시 '완료한 투표' 탭으로 전환
+                  // 일정 확정 시 '완료한 투표' 탭으로 자동 이동
                   _tabController.animateTo(1);
+                  Navigator.pop(context, true); // 홈 화면/채팅방에 전달
                 }
                 _fetchActiveVotes();
               });
@@ -219,7 +219,7 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
               ),
               boxShadow: [
                 BoxShadow(
-                  color: isLatest ? const Color(0x0F524582) : const Color(0x08000000),
+                  color: isLatest ? const Color(0x0F524582) : const Color(0x06000000),
                   blurRadius: 8,
                   offset: const Offset(0, 3),
                 )
@@ -268,7 +268,7 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    const Icon(Icons.people_alt_outlined, size: 14, color: Color(0xFF64748B)),
+                    const Icon(Icons.how_to_reg_outlined, size: 14, color: Color(0xFF64748B)),
                     const SizedBox(width: 4),
                     Text(
                       '총 $totalVotes명 참여${isOngoing ? "" : " · 완료"}',
