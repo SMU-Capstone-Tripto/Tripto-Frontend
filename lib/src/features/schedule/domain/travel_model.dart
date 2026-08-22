@@ -20,9 +20,9 @@ class TravelModel {
   });
 
   int get dDay {
-    final today =
-        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-    return start_date.difference(today).inDays;
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final start = DateTime(start_date.year, start_date.month, start_date.day);
+    return start.difference(today).inDays;
   }
 
   String get dDayLabel {
@@ -38,30 +38,35 @@ class TravelModel {
   }
 
   factory TravelModel.fromJson(Map<String, dynamic> json) {
-    // 1. 종료 날짜를 먼저 파싱합니다.
-    final endDate = DateTime.parse(json['end_date'] as String);
+    DateTime parseDate(dynamic val) {
+      if (val == null) return DateTime.now();
+      try {
+        return DateTime.parse(val.toString());
+      } catch (_) {
+        return DateTime.now();
+      }
+    }
 
-    // 2. 오늘 날짜 (시간 제외)
-    final today =
-        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final startDate = parseDate(json['start_date']);
+    final endDate = parseDate(json['end_date']);
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+
+    final statusStr = json['status']?.toString();
+    final TripStatus status = statusStr != null
+        ? (statusStr == 'upcoming' ? TripStatus.upcoming : TripStatus.past)
+        : (endDate.isBefore(today) ? TripStatus.past : TripStatus.upcoming);
 
     return TravelModel(
-      travel_id: json['travel_id'] as int,
-      owner_id: json['owner_id'] as int,
-      title: json['title'] as String? ?? '제목 없음',
-      // 혹시 destination도 null로 올 때를 대비해 안전하게 처리
-      destination: json['destination'] as String? ?? '',
-      start_date: DateTime.parse(json['start_date'] as String),
+      travel_id: int.tryParse(json['travel_id']?.toString() ?? json['id']?.toString() ?? '0') ?? 0,
+      owner_id: int.tryParse(json['owner_id']?.toString() ?? '0') ?? 0,
+      title: json['title']?.toString() ?? '제목 없음',
+      destination: json['destination']?.toString() ?? json['city']?.toString() ?? '',
+      start_date: startDate,
       end_date: endDate,
-
-      // 3. 서버에서 status를 주면 그걸 쓰고, 안 주면 날짜를 비교해서 자동으로 계산합니다!
-      status: json['status'] != null
-          ? (json['status'] == 'upcoming'
-              ? TripStatus.upcoming
-              : TripStatus.past)
-          : (endDate.isBefore(today) ? TripStatus.past : TripStatus.upcoming),
+      status: status,
     );
   }
+
   Map<String, dynamic> toCreateJson() => {
         'title': title,
         'destination': destination,

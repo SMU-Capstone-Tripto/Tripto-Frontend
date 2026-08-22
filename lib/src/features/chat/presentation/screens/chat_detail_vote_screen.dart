@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:tripto/src/core/auth_storage.dart';
+import 'package:tripto/src/features/schedule/domain/travel_model.dart';
+import 'package:tripto/src/features/schedule/domain/schedule_model.dart';
+import 'package:tripto/src/features/schedule/presentation/schedule_provider.dart';
+import 'package:tripto/src/features/schedule/presentation/schedule_detail_provider.dart';
+import 'package:tripto/src/features/schedule/presentation/screens/schedule_detail_screen.dart';
 
 class ChatDetailVoteScreen extends ConsumerStatefulWidget {
   final int voteId;
@@ -94,6 +99,98 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
     }
   }
 
+  // 💡 다양한 포맷의 스냅샷 데이터를 빠짐없이 ScheduleModel로 정밀 변환
+  List<ScheduleModel> _parseSnapshotToSchedules(dynamic snapshot) {
+    final List<ScheduleModel> schedules = [];
+    final List<dynamic> itineraries = snapshot['itinerary'] ?? snapshot['schedules'] ?? snapshot['activities'] ?? [];
+
+    int scheduleCounter = 1;
+
+    for (int dayIdx = 0; dayIdx < itineraries.length; dayIdx++) {
+      final int dayNum = dayIdx + 1;
+      final dynamic rawDay = itineraries[dayIdx];
+
+      if (rawDay is Map) {
+        final String title = rawDay['title'] ?? rawDay['place_name'] ?? rawDay['content'] ?? '상세 일정';
+        final String time = rawDay['start_time'] ?? rawDay['time'] ?? '09:00:00';
+        final int day = int.tryParse(rawDay['day_number']?.toString() ?? rawDay['day']?.toString() ?? '') ?? dayNum;
+
+        schedules.add(
+          ScheduleModel(
+            schedule_id: '${snapshot['snapshot_id'] ?? widget.voteId}_${scheduleCounter++}',
+            title: title,
+            start_time: time.length == 5 ? '$time:00' : time,
+            category: ScheduleType.activity,
+            day_number: day,
+            place_name: rawDay['place_name'] ?? title,
+            place_address: rawDay['place_address'] ?? snapshot['city'] ?? '',
+          ),
+        );
+        continue;
+      }
+
+      final String dayStr = rawDay.toString().trim();
+      final List<String> lines = dayStr.split('\n');
+
+      for (var line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) continue;
+        if (trimmed.startsWith('[') && trimmed.contains('일차')) continue;
+        if (trimmed.contains('${dayNum}일차') && trimmed.length < 8) continue;
+
+        final timeRegex = RegExp(r'^(\d{2}:\d{2}(?:\s*(?:~|-|→|->)\s*\d{2}:\d{2})?|\d{2}:\d{2})\s*(.*)');
+        final match = timeRegex.firstMatch(trimmed);
+
+        String time = '09:00:00';
+        String text = trimmed;
+        if (match != null) {
+          final rawTime = match.group(1) ?? '09:00';
+          time = rawTime.length == 5 ? '$rawTime:00' : rawTime;
+          text = match.group(2) ?? '';
+        }
+
+        ScheduleType category = ScheduleType.activity;
+        final lower = text.toLowerCase();
+        if (text.contains('→') || text.contains('->') || lower.contains('이동') || lower.contains('탑승')) {
+          category = ScheduleType.move;
+        } else if (lower.contains('식사') || lower.contains('맛집') || lower.contains('점심') || lower.contains('저녁') || lower.contains('식당')) {
+          category = ScheduleType.eat;
+        } else if (lower.contains('호텔') || lower.contains('숙소') || lower.contains('체크인') || lower.contains('펜션')) {
+          category = ScheduleType.stay;
+        }
+
+        schedules.add(
+          ScheduleModel(
+            schedule_id: '${snapshot['snapshot_id'] ?? widget.voteId}_${scheduleCounter++}',
+            title: text.isNotEmpty ? text : '일정',
+            start_time: time,
+            category: category,
+            day_number: dayNum,
+            place_name: text.contains(' ') ? text.split(' ')[0] : text,
+            place_address: snapshot['city'] ?? '',
+          ),
+        );
+      }
+    }
+
+    // 만약 파싱 결과가 완전히 비어있을 경우 안전 기본 일정 생성
+    if (schedules.isEmpty) {
+      schedules.add(
+        ScheduleModel(
+          schedule_id: '${widget.voteId}_1',
+          title: snapshot['plan_title'] ?? '1일차 여행 일정',
+          start_time: '10:00:00',
+          category: ScheduleType.activity,
+          day_number: 1,
+          place_name: snapshot['city'] ?? '여행지',
+          place_address: snapshot['city'] ?? '',
+        ),
+      );
+    }
+
+    return schedules;
+  }
+
   Future<void> _finalizeVote() async {
     if (_isActionLoading) return;
 
@@ -135,11 +232,74 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('여행 일정이 최종 확정되었습니다. 홈 화면의 일정 탭에서 확인하세요.')),
+        dynamic responseData;
+        try {
+          responseData = jsonDecode(utf8.decode(response.bodyBytes));
+        } catch (_) {}
+
+        final List<dynamic> snapshots = _voteDetail?['snapshots'] ?? [];
+        dynamic winningSnapshot;
+
+        final int? winnerSnapshotId = int.tryParse(responseData?['winner_snapshot_id']?.toString() ?? _voteDetail?['winner_snapshot_id']?.toString() ?? '');
+        if (winnerSnapshotId != null && winnerSnapshotId > 0) {
+          winningSnapshot = snapshots.firstWhere(
+            (s) => int.tryParse(s['snapshot_id']?.toString() ?? '') == winnerSnapshotId,
+            orElse: () => snapshots.isNotEmpty ? snapshots[0] : null,
           );
-          Navigator.pop(context, true); // 확정 플래그 반환
+        } else if (snapshots.isNotEmpty) {
+          winningSnapshot = snapshots[0];
+        }
+
+        if (winningSnapshot != null) {
+          final int travelId = int.tryParse(responseData?['travel_id']?.toString() ?? winningSnapshot['snapshot_id']?.toString() ?? widget.voteId.toString()) ?? widget.voteId;
+          final String title = winningSnapshot['plan_title'] ?? '최종 확정된 여행';
+          final String city = winningSnapshot['city'] ?? '국내';
+
+          DateTime startDate = DateTime.now().add(const Duration(days: 7));
+          DateTime endDate = startDate.add(const Duration(days: 2));
+
+          if (winningSnapshot['traveldates'] != null) {
+            try {
+              final dates = winningSnapshot['traveldates'].toString().split('~');
+              if (dates.length == 2) {
+                startDate = DateTime.parse(dates[0].trim());
+                endDate = DateTime.parse(dates[1].trim());
+              }
+            } catch (_) {}
+          }
+
+          final createdTravel = TravelModel(
+            travel_id: travelId,
+            owner_id: int.tryParse(_voteDetail?['creator_id']?.toString() ?? '1') ?? 1,
+            title: title,
+            destination: city,
+            start_date: startDate,
+            end_date: endDate,
+            status: TripStatus.upcoming,
+          );
+
+          final parsedSchedules = _parseSnapshotToSchedules(winningSnapshot);
+          ref.read(scheduleProvider.notifier).setSchedules(parsedSchedules);
+          ref.read(selectedDayProvider.notifier).state = 1;
+
+          ref.invalidate(travelsProvider);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('여행 일정이 최종 확정되어 일정 탭에 등록되었습니다.')),
+            );
+
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ScheduleDetailScreen(schedule: createdTravel),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            Navigator.pop(context, true);
+          }
         }
       } else {
         final err = jsonDecode(utf8.decode(response.bodyBytes));
@@ -369,7 +529,6 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 💡 1일차/2일차 핑 연결 없는 정갈한 타임라인
                   if (itineraries.isNotEmpty) ...[
                     for (int dayIdx = 0; dayIdx < itineraries.length; dayIdx++) ...[
                       _buildCleanDaySection(dayIdx + 1, itineraries[dayIdx]),
@@ -378,7 +537,6 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
                   ] else
                     const Text('등록된 일정이 없습니다.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5, fontFamily: 'Pretendard')),
                   
-                  // 경비 내역 카드
                   if (cost.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Container(
@@ -478,7 +636,6 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
     );
   }
 
-  // 💡 1일차/2일차 헤더는 독립된 칩으로 표시하고, 내부 실제 일정 줄에만 핑 연결
   Widget _buildCleanDaySection(int dayNum, dynamic dayData) {
     final String dayStr = dayData.toString().trim();
     final List<String> lines = dayStr.split('\n');
@@ -488,7 +645,6 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
       final trimmed = line.trim();
       if (trimmed.isEmpty) continue;
 
-      // '1일차', '[1일차 - ...]' 같은 헤더 제목 줄은 타임라인 노드에서 제외
       if (trimmed.startsWith('[') && trimmed.contains('일차')) continue;
       if (trimmed.contains('${dayNum}일차') && trimmed.length < 15) continue;
 
@@ -532,7 +688,6 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 독립된 일차 헤더 칩 (핑 연결 없음)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
           decoration: BoxDecoration(
@@ -542,7 +697,6 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
           child: Text('$dayNum일차', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
         ),
         const SizedBox(height: 10),
-        // 실제 일정 아이템들만 타임라인으로 연결
         Padding(
           padding: const EdgeInsets.only(left: 4),
           child: Column(

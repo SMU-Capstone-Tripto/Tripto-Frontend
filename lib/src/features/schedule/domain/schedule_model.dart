@@ -12,6 +12,7 @@ extension ScheduleTypeLabel on ScheduleType {
 class ScheduleModel {
   final String schedule_id;
   final String title;
+  final String? content; // 💡 세부 일정 본문 필드 추가
   final String start_time;
   final ScheduleType category;
   final String? place_name;
@@ -27,6 +28,7 @@ class ScheduleModel {
   const ScheduleModel({
     required this.schedule_id,
     required this.title,
+    this.content,
     required this.start_time,
     required this.category,
     required this.day_number,
@@ -41,46 +43,52 @@ class ScheduleModel {
   });
 
   factory ScheduleModel.fromJson(Map<String, dynamic> json) {
-    final categoryString = json['category'] as String? ?? 'activity';
+    final categoryString = json['category']?.toString() ?? 'activity';
     final type = ScheduleType.values.firstWhere(
       (e) => e.name == categoryString,
       orElse: () => ScheduleType.activity,
     );
 
-    // 메모 데이터 추출 로직
     int? extractedMemoId;
     String? extractedMemoContent;
 
-    if (json['memos'] != null &&
-        json['memos'] is List &&
-        (json['memos'] as List).isNotEmpty) {
+    if (json['memos'] != null && json['memos'] is List && (json['memos'] as List).isNotEmpty) {
       final firstMemo = (json['memos'] as List).first;
-      // 백엔드가 보내주는 메모 객체의 키값('id', 'content')에 맞게 파싱합니다.
-      if (firstMemo['id'] != null) {
-        extractedMemoId = int.parse(firstMemo['id'].toString());
+      if (firstMemo is Map) {
+        if (firstMemo['id'] != null) {
+          extractedMemoId = int.tryParse(firstMemo['id'].toString());
+        }
+        extractedMemoContent = firstMemo['content']?.toString();
+      } else if (firstMemo is String) {
+        extractedMemoContent = firstMemo;
       }
-      extractedMemoContent = firstMemo['content']?.toString();
+    } else if (json['memo'] != null) {
+      extractedMemoContent = json['memo']?.toString();
     }
 
+    final String? rawContent = json['content']?.toString() ??
+        json['description']?.toString() ??
+        json['details']?.toString() ??
+        (json['itinerary'] is List ? (json['itinerary'] as List).join('\n') : json['itinerary']?.toString());
+
     return ScheduleModel(
-      schedule_id: json['schedule_id']?.toString() ?? '',
-      title: json['title'] as String? ?? '',
-      start_time: json['start_time'] as String? ?? '00:00',
+      schedule_id: json['schedule_id']?.toString() ?? json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? json['place_name']?.toString() ?? '상세 일정',
+      content: rawContent,
+      start_time: json['start_time']?.toString() ?? json['time']?.toString() ?? '09:00:00',
       category: type,
-      day_number: json['day_number'] as int? ?? 1,
-      place_name: json['place_name'] as String?,
-      place_address: json['place_address'] as String?,
-      cost: json['cost'] as int?,
-      memos: json['memos'] as String?,
-      latitude: json['latitude'] as double?,
-      longitude: json['longitude'] as double?,
+      day_number: int.tryParse(json['day_number']?.toString() ?? json['day']?.toString() ?? '1') ?? 1,
+      place_name: json['place_name']?.toString(),
+      place_address: json['place_address']?.toString(),
+      cost: int.tryParse(json['cost']?.toString().replaceAll(RegExp(r'[^0-9]'), '') ?? ''),
+      memos: json['memos'] is String ? json['memos'] : extractedMemoContent,
+      latitude: double.tryParse(json['latitude']?.toString() ?? ''),
+      longitude: double.tryParse(json['longitude']?.toString() ?? ''),
       memo_id: extractedMemoId,
       memo_content: extractedMemoContent,
     );
   }
 
-  // 💡 핵심 해결 포인트: 상태 업데이트 시 메모 데이터가 증발하지 않도록 파라미터를 추가했습니다.
-  // 💡 copyWith 내부에 start_time을 추가합니다.
   ScheduleModel copyWith({
     String? start_time,
     ScheduleType? category,
@@ -88,10 +96,12 @@ class ScheduleModel {
     String? memo,
     int? memo_id,
     String? memo_content,
+    String? content,
   }) =>
       ScheduleModel(
         schedule_id: schedule_id,
         title: title,
+        content: content ?? this.content,
         start_time: start_time ?? this.start_time,
         category: category ?? this.category,
         day_number: day_number,

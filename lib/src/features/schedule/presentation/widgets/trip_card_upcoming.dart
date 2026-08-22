@@ -9,74 +9,110 @@ class TripCardUpcoming extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Column(
-        children: [
-          // 상단 보라 영역
-          Container(
-            color: const Color(0xFF6241D9),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(schedule.title,
-                        style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.25),
-                        borderRadius: BorderRadius.circular(99),
-                        border:
-                            Border.all(color: Colors.white.withOpacity(0.3)),
-                      ),
-                      child: Text(schedule.dDayLabel,
-                          style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _MetaRow(
-                    icon: Icons.calendar_today_outlined,
-                    label: schedule.dateRangeLabel),
-                const SizedBox(height: 4),
-                _MetaRow(
-                    icon: Icons.location_on_outlined,
-                    label: schedule.destination),
-              ],
-            ),
-          ),
-          // 하단 흰색 액션
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('일정 보기',
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF4A5565),
-                        fontWeight: FontWeight.w500)),
-                GestureDetector(
-                  onTap: onTap,
-                  child:
-                      const Icon(Icons.chevron_right, color: Color(0xFF99A1AF)),
-                ),
-              ],
-            ),
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          )
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Column(
+              children: [
+                Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF5F45A4), Color(0xFF755BB8)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              schedule.title,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                fontFamily: 'Pretendard',
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(99),
+                              border: Border.all(color: Colors.white.withOpacity(0.25)),
+                            ),
+                            child: Text(
+                              schedule.dDayLabel,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                                fontFamily: 'Pretendard',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _MetaRow(
+                        icon: Icons.calendar_today_outlined,
+                        label: schedule.dateRangeLabel,
+                      ),
+                      const SizedBox(height: 4),
+                      _MetaRow(
+                        icon: Icons.location_on_outlined,
+                        label: schedule.destination,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '일정 보기',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF475569),
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Pretendard',
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 18),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -91,13 +127,21 @@ class _MetaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 14, color: Colors.white.withOpacity(0.9)),
+        Icon(icon, size: 13.5, color: Colors.white.withOpacity(0.85)),
         const SizedBox(width: 6),
-        Text(label,
+        Expanded(
+          child: Text(
+            label,
             style: TextStyle(
-                fontSize: 12,
-                color: Colors.white.withOpacity(0.9),
-                fontWeight: FontWeight.w500)),
+              fontSize: 12,
+              color: Colors.white.withOpacity(0.85),
+              fontWeight: FontWeight.w500,
+              fontFamily: 'Pretendard',
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }

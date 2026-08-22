@@ -14,19 +14,21 @@ extension SortOrderLabel on SortOrder {
 }
 
 // ── 전체 여행 목록 (API 연동) ──
-// FutureProvider이므로 AsyncValue<List<TravelModel>> 반환
 final travelsProvider = FutureProvider<List<TravelModel>>((ref) async {
-  // return ref.read(travelRepositoryProvider).getTravels();
-  // ✅ [테스트용] 앱 첫 화면에 띄울 완벽한 가짜 여행 데이터
+  // ✅ 실제 서버 API 연동
+  return ref.watch(travelRepositoryProvider).getTravels();
+
+  /*
+  // ❌ [테스트용 더미데이터 주석 처리]
   return [
     TravelModel(
-      travel_id: 999, // 💡 이 ID가 아까 만든 999번 부산 스케줄과 연결됩니다!
+      travel_id: 999,
       owner_id: 1,
       title: '부산 먹방 & 호캉스 여행',
       destination: '부산',
-      start_date: DateTime.now(), // 오늘부터
-      end_date: DateTime.now().add(const Duration(days: 2)), // 2박 3일
-      status: TripStatus.upcoming, // 예정된 여행 탭에 뜨도록 설정
+      start_date: DateTime.now(),
+      end_date: DateTime.now().add(const Duration(days: 2)),
+      status: TripStatus.upcoming,
     ),
     TravelModel(
       travel_id: 1000,
@@ -38,6 +40,7 @@ final travelsProvider = FutureProvider<List<TravelModel>>((ref) async {
       status: TripStatus.upcoming,
     ),
   ];
+  */
 });
 
 // 정렬 기준
@@ -55,7 +58,7 @@ final upcomingSchedulesProvider =
 // 가장 가까운 예정 여행 1개 — 홈 카드에 표시
 final nextTripProvider = Provider<TravelModel?>((ref) {
   final upcomingAsync = ref.watch(upcomingSchedulesProvider);
-  final list = upcomingAsync.value; // 로딩/에러 시 null
+  final list = upcomingAsync.value;
   if (list == null || list.isEmpty) return null;
   final sorted = [...list]
     ..sort((a, b) => a.start_date.compareTo(b.start_date));
@@ -87,6 +90,6 @@ final pastSchedulesProvider = Provider<AsyncValue<List<TravelModel>>>((ref) {
 final deleteTravelProvider = Provider((ref) {
   return (String travelId) async {
     await ref.read(travelRepositoryProvider).deleteTravel(travelId);
-    ref.invalidate(travelsProvider); // 삭제 후 목록 갱신
+    ref.invalidate(travelsProvider);
   };
 });
