@@ -5,9 +5,14 @@ import 'package:tripto/src/core/auth_storage.dart';
 import 'chat_detail_vote_screen.dart';
 
 class VoteTabsScreen extends StatefulWidget {
-  final int initialTabIndex; 
+  final int initialTabIndex;
+  final int? roomId;
 
-  const VoteTabsScreen({super.key, this.initialTabIndex = 0});
+  const VoteTabsScreen({
+    super.key,
+    this.initialTabIndex = 0,
+    this.roomId,
+  });
 
   @override
   State<VoteTabsScreen> createState() => _VoteTabsScreenState();
@@ -35,7 +40,7 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
     super.initState();
     _tabController = TabController(length: 2, vsync: this, initialIndex: widget.initialTabIndex);
     _tabController.addListener(() => setState(() {}));
-    _fetchActiveVotes();
+    _fetchAllVotes();
   }
 
   @override
@@ -44,46 +49,96 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
     super.dispose();
   }
 
-  Future<void> _fetchActiveVotes() async {
+  int? _extractRoomId(dynamic v) {
+    if (v is! Map) return null;
+    final dynamic raw = v['room_id'] ??
+        v['chat_room_id'] ??
+        v['roomId'] ??
+        v['chatroom_id'] ??
+        v['chat_id'] ??
+        (v['room'] is Map ? (v['room']['id'] ?? v['room']['room_id']) : null);
+    if (raw == null) return null;
+    return int.tryParse(raw.toString());
+  }
+
+  List<dynamic> _filterByRoom(List<dynamic> list) {
+    if (widget.roomId == null || widget.roomId! <= 0) return list;
+    
+    // 응답에 room_id가 포함되어 있는 경우에만 방별 필터링 적용
+    final bool hasAnyRoomId = list.any((v) => _extractRoomId(v) != null);
+    if (!hasAnyRoomId) return list; // room_id가 아직 응답에 없다면 전체 표시
+
+    return list.where((v) {
+      final int? rId = _extractRoomId(v);
+      if (rId != null) return rId == widget.roomId;
+      return true;
+    }).toList();
+  }
+
+  Future<void> _fetchAllVotes() async {
     setState(() => _isLoading = true);
+
+    List<dynamic> activeList = [];
+    List<dynamic> finalizedList = [];
+
+    // 1. 진행 중인 투표 조회 (GET /vote/active)
     try {
-      final response = await http.get(
+      final resActive = await http.get(
         Uri.parse('$_apiUrl/vote/active'),
         headers: AuthStorage.authHeaders,
       );
-
-      if (response.statusCode == 200) {
-        final dynamic decoded = jsonDecode(utf8.decode(response.bodyBytes));
-        List<dynamic> rawList = [];
-
+      if (resActive.statusCode == 200) {
+        final dynamic decoded = jsonDecode(utf8.decode(resActive.bodyBytes));
         if (decoded is List) {
-          rawList = decoded;
+          activeList = decoded;
         } else if (decoded is Map) {
-          rawList = decoded['votes'] ?? decoded['data'] ?? [];
+          activeList = decoded['votes'] ?? decoded['data'] ?? [];
         }
-
-        rawList.sort((a, b) {
-          final int aId = int.tryParse(a['vote_id']?.toString() ?? '0') ?? 0;
-          final int bId = int.tryParse(b['vote_id']?.toString() ?? '0') ?? 0;
-          return bId.compareTo(aId);
-        });
-
-        final ongoing = rawList.where((v) => (v['status'] == 'active' || v['is_active'] == true)).toList();
-        final completed = rawList.where((v) => (v['status'] != 'active' && v['is_active'] != true)).toList();
-
-        if (mounted) {
-          setState(() {
-            _ongoingVotes = ongoing;
-            _completedVotes = completed;
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
-      debugPrint('투표 목록 로드 실패: $e');
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint('진행 중인 투표 로드 에러: $e');
+    }
+
+    // 2. 완료된 투표 조회 (GET /vote/finalized)
+    try {
+      final resFinalized = await http.get(
+        Uri.parse('$_apiUrl/vote/finalized'),
+        headers: AuthStorage.authHeaders,
+      );
+      if (resFinalized.statusCode == 200) {
+        final dynamic decoded = jsonDecode(utf8.decode(resFinalized.bodyBytes));
+        if (decoded is List) {
+          finalizedList = decoded;
+        } else if (decoded is Map) {
+          finalizedList = decoded['votes'] ?? decoded['data'] ?? [];
+        }
+      }
+    } catch (e) {
+      debugPrint('완료된 투표 로드 에러: $e');
+    }
+
+    // 3. 방 필터링 및 최신순 정렬
+    activeList = _filterByRoom(activeList);
+    finalizedList = _filterByRoom(finalizedList);
+
+    activeList.sort((a, b) {
+      final int aId = int.tryParse(a['vote_id']?.toString() ?? '0') ?? 0;
+      final int bId = int.tryParse(b['vote_id']?.toString() ?? '0') ?? 0;
+      return bId.compareTo(aId);
+    });
+
+    finalizedList.sort((a, b) {
+      final int aId = int.tryParse(a['vote_id']?.toString() ?? '0') ?? 0;
+      final int bId = int.tryParse(b['vote_id']?.toString() ?? '0') ?? 0;
+      return bId.compareTo(aId);
+    });
+
+    if (mounted) {
+      setState(() {
+        _ongoingVotes = activeList;
+        _completedVotes = finalizedList;
+        _isLoading = false;
+      });
     }
   }
 
@@ -106,6 +161,39 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
       return sum;
     }
     return int.tryParse(vote['total_votes']?.toString() ?? vote['participant_count']?.toString() ?? '0') ?? 0;
+  }
+
+  String _extractTitle(dynamic vote) {
+    if (vote['plan_title'] != null && vote['plan_title'].toString().isNotEmpty) {
+      return vote['plan_title'].toString();
+    }
+    if (vote['title'] != null && vote['title'].toString().isNotEmpty) {
+      return vote['title'].toString();
+    }
+    if (vote['snapshots'] is List && (vote['snapshots'] as List).isNotEmpty) {
+      final firstSnapshot = vote['snapshots'][0];
+      if (firstSnapshot is Map && firstSnapshot['plan_title'] != null) {
+        return firstSnapshot['plan_title'].toString();
+      }
+    }
+    return '여행 일정 투표';
+  }
+
+  void _onVoteItemTapped(dynamic vote) {
+    final int voteId = int.tryParse(vote['vote_id']?.toString() ?? '0') ?? 0;
+    if (voteId <= 0) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatDetailVoteScreen(voteId: voteId),
+      ),
+    ).then((result) {
+      if (result == true) {
+        _tabController.animateTo(1); // 확정 후 완료 탭으로 이동
+      }
+      _fetchAllVotes(); // API 재조회로 목록 최신화
+    });
   }
 
   @override
@@ -151,7 +239,7 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF524582)))
           : RefreshIndicator(
               color: const Color(0xFF524582),
-              onRefresh: _fetchActiveVotes,
+              onRefresh: _fetchAllVotes,
               child: TabBarView(
                 controller: _tabController,
                 children: [
@@ -183,30 +271,13 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
       itemCount: votes.length,
       itemBuilder: (context, index) {
         final vote = votes[index];
-        final int voteId = int.tryParse(vote['vote_id']?.toString() ?? '0') ?? 0;
-        final String title = vote['plan_title'] ?? vote['title'] ?? '여행 일정 투표';
+        final String title = _extractTitle(vote);
         final String createdAtStr = _formatDate(vote['created_at']);
         final int totalVotes = _calculateTotalParticipants(vote);
         final bool isLatest = index == 0 && isOngoing;
 
         return GestureDetector(
-          onTap: () {
-            if (voteId > 0) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ChatDetailVoteScreen(voteId: voteId),
-                ),
-              ).then((result) {
-                if (result == true) {
-                  // 일정 확정 시 '완료한 투표' 탭으로 자동 이동
-                  _tabController.animateTo(1);
-                  Navigator.pop(context, true); // 홈 화면/채팅방에 전달
-                }
-                _fetchActiveVotes();
-              });
-            }
-          },
+          onTap: () => _onVoteItemTapped(vote),
           child: Container(
             margin: const EdgeInsets.only(bottom: 14),
             padding: const EdgeInsets.all(18),
