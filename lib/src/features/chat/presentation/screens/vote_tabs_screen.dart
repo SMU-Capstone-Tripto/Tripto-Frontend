@@ -63,10 +63,9 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
 
   List<dynamic> _filterByRoom(List<dynamic> list) {
     if (widget.roomId == null || widget.roomId! <= 0) return list;
-    
-    // 응답에 room_id가 포함되어 있는 경우에만 방별 필터링 적용
+
     final bool hasAnyRoomId = list.any((v) => _extractRoomId(v) != null);
-    if (!hasAnyRoomId) return list; // room_id가 아직 응답에 없다면 전체 표시
+    if (!hasAnyRoomId) return list;
 
     return list.where((v) {
       final int? rId = _extractRoomId(v);
@@ -81,10 +80,15 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
     List<dynamic> activeList = [];
     List<dynamic> finalizedList = [];
 
-    // 1. 진행 중인 투표 조회 (GET /vote/active)
+    // 💡 room_id 쿼리 파라미터 구성
+    final String roomQuery = (widget.roomId != null && widget.roomId! > 0)
+        ? '?room_id=${widget.roomId}'
+        : '';
+
+    // 1. 진행 중인 투표 조회 (GET /vote/active?room_id=...)
     try {
       final resActive = await http.get(
-        Uri.parse('$_apiUrl/vote/active'),
+        Uri.parse('$_apiUrl/vote/active$roomQuery'),
         headers: AuthStorage.authHeaders,
       );
       if (resActive.statusCode == 200) {
@@ -99,10 +103,10 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
       debugPrint('진행 중인 투표 로드 에러: $e');
     }
 
-    // 2. 완료된 투표 조회 (GET /vote/finalized)
+    // 2. 완료된 투표 조회 (GET /vote/finalized?room_id=...)
     try {
       final resFinalized = await http.get(
-        Uri.parse('$_apiUrl/vote/finalized'),
+        Uri.parse('$_apiUrl/vote/finalized$roomQuery'),
         headers: AuthStorage.authHeaders,
       );
       if (resFinalized.statusCode == 200) {
@@ -189,10 +193,11 @@ class _VoteTabsScreenState extends State<VoteTabsScreen> with SingleTickerProvid
         builder: (_) => ChatDetailVoteScreen(voteId: voteId),
       ),
     ).then((result) {
-      if (result == true) {
-        _tabController.animateTo(1); // 확정 후 완료 탭으로 이동
+      // 💡 확정되었을 때만 완료 탭으로 이동, 삭제나 일반 뒤로가기 시에는 현재 탭 유지
+      if (result == 'finalized') {
+        _tabController.animateTo(1);
       }
-      _fetchAllVotes(); // API 재조회로 목록 최신화
+      _fetchAllVotes(); // 목록 최신화
     });
   }
 

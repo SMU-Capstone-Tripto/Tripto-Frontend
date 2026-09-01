@@ -41,8 +41,8 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
     _fetchVoteDetail();
   }
 
-  Future<void> _fetchVoteDetail() async {
-    setState(() => _isLoading = true);
+  Future<void> _fetchVoteDetail({bool updateLoadingState = true}) async {
+    if (updateLoadingState) setState(() => _isLoading = true);
     try {
       final response = await http.get(
         Uri.parse('$_apiUrl/vote/${widget.voteId}'),
@@ -54,18 +54,19 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
         if (mounted) {
           setState(() {
             _voteDetail = data;
-            _isLoading = false;
           });
         }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint('투표 상세 조회 에러: $e');
-      if (mounted) setState(() => _isLoading = false);
+    } finally {
+      if (updateLoadingState && mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
+  // 1. 투표 참여 (POST)
   Future<void> _castVote(int snapshotId) async {
     if (_isActionLoading) return;
     setState(() => _isActionLoading = true);
@@ -83,7 +84,7 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
             const SnackBar(content: Text('투표가 정상적으로 반영되었습니다.')),
           );
         }
-        await _fetchVoteDetail();
+        await _fetchVoteDetail(updateLoadingState: false);
       } else {
         final err = jsonDecode(utf8.decode(response.bodyBytes));
         if (mounted) {
@@ -99,12 +100,124 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
     }
   }
 
-  // 💡 다양한 포맷의 스냅샷 데이터를 빠짐없이 ScheduleModel로 정밀 변환
+  // 2. 투표 변경 (PUT)
+  Future<void> _changeVote(int snapshotId) async {
+    if (_isActionLoading) return;
+    setState(() => _isActionLoading = true);
+
+    try {
+      final response = await http.put(
+        Uri.parse('$_apiUrl/vote/${widget.voteId}/cast'),
+        headers: AuthStorage.authHeaders,
+        body: jsonEncode({"snapshot_id": snapshotId}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('투표 선택이 변경되었습니다.')),
+          );
+        }
+        await _fetchVoteDetail(updateLoadingState: false);
+      } else {
+        final err = jsonDecode(utf8.decode(response.bodyBytes));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(err['detail'] ?? '투표 변경 실패')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('투표 변경 에러: $e');
+    } finally {
+      if (mounted) setState(() => _isActionLoading = false);
+    }
+  }
+
+  // 3. 투표 삭제 (DELETE)
+  Future<void> _deleteVote() async {
+    if (_isActionLoading) return;
+
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '투표 삭제',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+        ),
+        content: const Text(
+          '정말 투표를 삭제하시겠습니까? 삭제 시 모든 투표 기록이 삭제되며 채팅방 멤버들에게 삭제 알림이 전달됩니다.',
+          style: TextStyle(fontSize: 13.5, color: Color(0xFF475569), fontFamily: 'Pretendard', height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소', style: TextStyle(color: Colors.grey, fontFamily: 'Pretendard')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('삭제', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isActionLoading = true);
+
+    try {
+      final response = await http.delete(
+        Uri.parse('$_apiUrl/vote/${widget.voteId}'),
+        headers: AuthStorage.authHeaders,
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('투표가 삭제되었습니다.')),
+          );
+          Navigator.pop(context, true); // 목록 새로고침 트리거
+        }
+      } else {
+        final err = jsonDecode(utf8.decode(response.bodyBytes));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(err['detail'] ?? '투표 삭제 권한이 없거나 실패했습니다.')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('투표 삭제 에러: $e');
+    } finally {
+      if (mounted) setState(() => _isActionLoading = false);
+    }
+  }
+
+  ScheduleType _detectCategory(String text) {
+    final lower = text.toLowerCase();
+    if (text.contains('→') || text.contains('->') || lower.contains('이동') || lower.contains('탑승') || lower.contains('도착') || lower.contains('출발') || lower.contains('공항') || lower.contains('역')) {
+      return ScheduleType.move;
+    } else if (lower.contains('식사') || lower.contains('맛집') || lower.contains('점심') || lower.contains('저녁') || lower.contains('아침') || lower.contains('식당') || lower.contains('카페') || lower.contains('커피') || lower.contains('디저트') || lower.contains('브런치') || lower.contains('베이커리')) {
+      return ScheduleType.eat;
+    } else if (lower.contains('호텔') || lower.contains('숙소') || lower.contains('체크인') || lower.contains('체크아웃') || lower.contains('펜션') || lower.contains('리조트') || lower.contains('게스트하우스') || lower.contains('민박')) {
+      return ScheduleType.stay;
+    }
+    return ScheduleType.activity;
+  }
+
   List<ScheduleModel> _parseSnapshotToSchedules(dynamic snapshot) {
     final List<ScheduleModel> schedules = [];
     final List<dynamic> itineraries = snapshot['itinerary'] ?? snapshot['schedules'] ?? snapshot['activities'] ?? [];
 
-    int scheduleCounter = 1;
+    int globalCounter = 1;
+    final List<String> defaultTimes = ['10:00:00', '12:30:00', '15:00:00', '17:30:00', '19:30:00', '21:00:00'];
 
     for (int dayIdx = 0; dayIdx < itineraries.length; dayIdx++) {
       final int dayNum = dayIdx + 1;
@@ -112,15 +225,15 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
 
       if (rawDay is Map) {
         final String title = rawDay['title'] ?? rawDay['place_name'] ?? rawDay['content'] ?? '상세 일정';
-        final String time = rawDay['start_time'] ?? rawDay['time'] ?? '09:00:00';
+        final String time = rawDay['start_time'] ?? rawDay['time'] ?? '10:00:00';
         final int day = int.tryParse(rawDay['day_number']?.toString() ?? rawDay['day']?.toString() ?? '') ?? dayNum;
 
         schedules.add(
           ScheduleModel(
-            schedule_id: '${snapshot['snapshot_id'] ?? widget.voteId}_${scheduleCounter++}',
+            schedule_id: '${snapshot['snapshot_id'] ?? widget.voteId}_${globalCounter++}',
             title: title,
             start_time: time.length == 5 ? '$time:00' : time,
-            category: ScheduleType.activity,
+            category: _detectCategory(title),
             day_number: day,
             place_name: rawDay['place_name'] ?? title,
             place_address: rawDay['place_address'] ?? snapshot['city'] ?? '',
@@ -129,63 +242,86 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
         continue;
       }
 
-      final String dayStr = rawDay.toString().trim();
-      final List<String> lines = dayStr.split('\n');
+      String dayStr = rawDay.toString().trim();
+      dayStr = dayStr.replaceAll(RegExp(r'^\[?\s*\d+일차[^\n:\-\]]*[:\-\]]*\s*'), '');
 
-      for (var line in lines) {
-        final trimmed = line.trim();
+      List<String> rawChunks = [];
+      if (dayStr.contains('\n')) {
+        rawChunks = dayStr.split('\n');
+      } else if (dayStr.contains('→') || dayStr.contains('->')) {
+        rawChunks = dayStr.split(RegExp(r'→|->'));
+      } else if (dayStr.contains(',')) {
+        rawChunks = dayStr.split(',');
+      } else {
+        rawChunks = [dayStr];
+      }
+
+      int timeIndex = 0;
+
+      for (var chunk in rawChunks) {
+        String trimmed = chunk.trim();
         if (trimmed.isEmpty) continue;
-        if (trimmed.startsWith('[') && trimmed.contains('일차')) continue;
-        if (trimmed.contains('${dayNum}일차') && trimmed.length < 8) continue;
+        trimmed = trimmed.replaceAll(RegExp(r'^[-•*]\s*'), '').trim();
+        if (trimmed.isEmpty) continue;
 
         final timeRegex = RegExp(r'^(\d{2}:\d{2}(?:\s*(?:~|-|→|->)\s*\d{2}:\d{2})?|\d{2}:\d{2})\s*(.*)');
         final match = timeRegex.firstMatch(trimmed);
 
-        String time = '09:00:00';
+        String time = defaultTimes[timeIndex % defaultTimes.length];
         String text = trimmed;
+
         if (match != null) {
-          final rawTime = match.group(1) ?? '09:00';
+          final rawTime = match.group(1) ?? '';
           time = rawTime.length == 5 ? '$rawTime:00' : rawTime;
-          text = match.group(2) ?? '';
+          text = (match.group(2) ?? '').trim();
         }
 
-        ScheduleType category = ScheduleType.activity;
-        final lower = text.toLowerCase();
-        if (text.contains('→') || text.contains('->') || lower.contains('이동') || lower.contains('탑승')) {
-          category = ScheduleType.move;
-        } else if (lower.contains('식사') || lower.contains('맛집') || lower.contains('점심') || lower.contains('저녁') || lower.contains('식당')) {
-          category = ScheduleType.eat;
-        } else if (lower.contains('호텔') || lower.contains('숙소') || lower.contains('체크인') || lower.contains('펜션')) {
-          category = ScheduleType.stay;
+        if (text.isEmpty) text = trimmed;
+
+        String placeName = text;
+        if (text.contains('(')) {
+          placeName = text.split('(')[0].trim();
+        } else if (text.contains(' ')) {
+          placeName = text.split(' ')[0].trim();
         }
 
         schedules.add(
           ScheduleModel(
-            schedule_id: '${snapshot['snapshot_id'] ?? widget.voteId}_${scheduleCounter++}',
-            title: text.isNotEmpty ? text : '일정',
+            schedule_id: '${snapshot['snapshot_id'] ?? widget.voteId}_${globalCounter++}',
+            title: text,
             start_time: time,
-            category: category,
+            category: _detectCategory(text),
             day_number: dayNum,
-            place_name: text.contains(' ') ? text.split(' ')[0] : text,
+            place_name: placeName.isNotEmpty ? placeName : text,
             place_address: snapshot['city'] ?? '',
           ),
         );
+
+        timeIndex++;
       }
     }
 
-    // 만약 파싱 결과가 완전히 비어있을 경우 안전 기본 일정 생성
     if (schedules.isEmpty) {
-      schedules.add(
+      schedules.addAll([
         ScheduleModel(
           schedule_id: '${widget.voteId}_1',
-          title: snapshot['plan_title'] ?? '1일차 여행 일정',
+          title: '${snapshot['city'] ?? '여행지'} 도착 및 관광',
           start_time: '10:00:00',
-          category: ScheduleType.activity,
+          category: ScheduleType.move,
           day_number: 1,
           place_name: snapshot['city'] ?? '여행지',
           place_address: snapshot['city'] ?? '',
         ),
-      );
+        ScheduleModel(
+          schedule_id: '${widget.voteId}_2',
+          title: '대표 맛집 식사',
+          start_time: '12:30:00',
+          category: ScheduleType.eat,
+          day_number: 1,
+          place_name: '현지 식당',
+          place_address: snapshot['city'] ?? '',
+        ),
+      ]);
     }
 
     return schedules;
@@ -335,6 +471,8 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
     }
 
     final bool isActive = (_voteDetail?['status'] == 'active');
+    final String voteType = _voteDetail?['vote_type']?.toString() ?? 'group';
+
     final List<dynamic> snapshots = _voteDetail?['snapshots'] ?? [];
     final List<dynamic> results = _voteDetail?['results'] ?? [];
 
@@ -364,14 +502,26 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          if (isActive)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: TextButton(
-                onPressed: _finalizeVote,
-                child: const Text('일정 확정', style: TextStyle(color: Color(0xFF524582), fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Pretendard')),
+          // 💡 진행 중인 투표일 때 [투표 삭제] 및 [일정 확정] 노출
+          if (isActive) ...[
+            TextButton(
+              onPressed: _deleteVote,
+              child: const Text(
+                '투표 삭제',
+                style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w600, fontSize: 13.5, fontFamily: 'Pretendard'),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TextButton(
+                onPressed: _finalizeVote,
+                child: const Text(
+                  '일정 확정',
+                  style: TextStyle(color: Color(0xFF524582), fontWeight: FontWeight.bold, fontSize: 13.5, fontFamily: 'Pretendard'),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
       body: SingleChildScrollView(
@@ -436,8 +586,9 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
                   snapshot: snapshots[i],
                   voteCount: voteCountMap[int.tryParse(snapshots[i]['snapshot_id']?.toString() ?? '') ?? 0] ?? 0,
                   totalVotes: totalVotesCount,
-                  isMyVoted: myVotedSnapshotId == (int.tryParse(snapshots[i]['snapshot_id']?.toString() ?? '') ?? 0),
+                  myVotedSnapshotId: myVotedSnapshotId,
                   isActive: isActive,
+                  voteType: voteType,
                 ),
                 const SizedBox(height: 14),
               ],
@@ -452,11 +603,15 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
     required dynamic snapshot,
     required int voteCount,
     required int totalVotes,
-    required bool isMyVoted,
+    required int? myVotedSnapshotId,
     required bool isActive,
+    required String voteType,
   }) {
     bool isExpanded = _expandedIndex == index;
     final int snapshotId = int.tryParse(snapshot['snapshot_id']?.toString() ?? '0') ?? 0;
+    final bool isMyVoted = (myVotedSnapshotId != null && myVotedSnapshotId == snapshotId);
+    final bool hasVotedAny = (myVotedSnapshotId != null && myVotedSnapshotId > 0);
+
     final String title = snapshot['plan_title'] ?? '일정 후보 ${index + 1}';
     final List<dynamic> itineraries = snapshot['itinerary'] ?? [];
     final Map<String, dynamic> cost = snapshot['estimated_cost'] is Map ? snapshot['estimated_cost'] : {};
@@ -596,7 +751,15 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
                       width: double.infinity,
                       height: 42,
                       child: ElevatedButton(
-                        onPressed: isMyVoted ? null : () => _castVote(snapshotId),
+                        onPressed: isMyVoted
+                            ? null
+                            : () {
+                                if (hasVotedAny && voteType == 'group') {
+                                  _changeVote(snapshotId);
+                                } else {
+                                  _castVote(snapshotId);
+                                }
+                              },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF524582),
                           disabledBackgroundColor: const Color(0xFFE2E8F0),
@@ -604,7 +767,9 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         child: Text(
-                          isMyVoted ? '투표 완료된 일정' : '이 일정에 투표하기',
+                          isMyVoted
+                              ? '내 선택 (투표 완료)'
+                              : (hasVotedAny && voteType == 'group' ? '이 일정으로 투표 변경' : '이 일정에 투표하기'),
                           style: TextStyle(
                             color: isMyVoted ? const Color(0xFF94A3B8) : Colors.white,
                             fontWeight: FontWeight.bold,
@@ -644,7 +809,6 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
     for (var line in lines) {
       final trimmed = line.trim();
       if (trimmed.isEmpty) continue;
-
       if (trimmed.startsWith('[') && trimmed.contains('일차')) continue;
       if (trimmed.contains('${dayNum}일차') && trimmed.length < 15) continue;
 
