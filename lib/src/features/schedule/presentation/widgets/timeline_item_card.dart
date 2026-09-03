@@ -40,9 +40,18 @@ class TimelineItemCard extends StatelessWidget {
     ),
   };
 
+  // 💡 1,000 단위 콤마 포맷터
+  String _formatCost(int cost) {
+    return cost.toString().replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (m) => '${m[1]},',
+        );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cfg = _configs[item.category] ?? _configs[ScheduleType.activity]!;
+    final bool hasCost = item.cost != null && item.cost! > 0;
 
     return InkWell(
       onTap: onTap,
@@ -94,84 +103,121 @@ class TimelineItemCard extends StatelessWidget {
                 ],
               ),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                item.start_time.length >= 5 ? item.start_time.substring(0, 5) : item.start_time,
+                  // 상단 뱃지 영역 (시간 + 카테고리 + 분리된 예상 비용)
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          item.start_time.length >= 5 ? item.start_time.substring(0, 5) : item.start_time,
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF475569),
+                            fontFamily: 'Pretendard',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cfg.bgColor,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          cfg.label,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.bold,
+                            color: cfg.color,
+                            fontFamily: 'Pretendard',
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+
+                      // 💡 분리된 예상 비용 태그 칩
+                      if (hasCost)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.payments_outlined, size: 11, color: Color(0xFF64748B)),
+                              const SizedBox(width: 3),
+                              Text(
+                                '${_formatCost(item.cost!)}원',
                                 style: const TextStyle(
                                   fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w700,
                                   color: Color(0xFF475569),
                                   fontFamily: 'Pretendard',
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: cfg.bgColor,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                cfg.label,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: cfg.color,
-                                  fontFamily: 'Pretendard',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          item.title,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1E293B),
-                            fontFamily: 'Pretendard',
-                          ),
-                        ),
-                        if (item.place_name != null && item.place_name!.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(Icons.location_on_outlined, size: 12, color: cfg.color),
-                              const SizedBox(width: 2),
-                              Expanded(
-                                child: Text(
-                                  item.place_name!,
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    color: Color(0xFF64748B),
-                                    fontFamily: 'Pretendard',
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
                             ],
                           ),
-                        ],
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 18),
+                  const SizedBox(height: 8),
+
+                  // 제목 및 장소명
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.title,
+                              style: const TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1E293B),
+                                fontFamily: 'Pretendard',
+                              ),
+                            ),
+                            if (item.place_address != null && item.place_address!.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(Icons.location_on_outlined, size: 12, color: cfg.color),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      item.place_address!,
+                                      style: const TextStyle(
+                                        fontSize: 11.5,
+                                        color: Color(0xFF64748B),
+                                        fontFamily: 'Pretendard',
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 18),
+                    ],
+                  ),
                 ],
               ),
             ),

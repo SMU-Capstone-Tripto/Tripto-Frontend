@@ -1,0 +1,69 @@
+[33mb06efbc[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m 투표 수정삭제
+[33m3962143[m 일정1
+[33md20d7d2[m d
+[33m0cf12eb[m 투표
+[33mf4ea5b6[m vote
+[33m836954b[m 구글 지도로 변경 및 일정 수정
+[33m85223cd[m 실시간 알림
+[33m8e009fa[m 실시간 알림
+[33m9fc7fa1[m 알림 기능 1차 수정 사항
+[33mb6e877e[m 실시간 알림 기능
+[33m1746ce4[m 임시 저장
+[33mcebf793[m 작업 저장
+[33m528caf0[m 메모 수정사항
+[33mf48c680[m 채팅방기능
+[33m8ab35ed[m 챗봇
+[33m536cdfb[m[33m ([m[1;31morigin/임시[m[33m, [m[1;32m임시[m[33m)[m f
+[33m34ba656[m 사진전송
+[33m515043b[m 일댈채팅
+[33ma7f90eb[m 채팅방 목록
+[33m001f2e8[m 메모 저장 로직
+[33md5dbdc7[m 프로필 사진 추가
+[33m152d385[m 채팅목록 프로필
+[33m4cc2853[m 채팅방 목록 수정
+[33m7814494[m 프로필 사진 수정
+[33m4bb5d80[m 프로필 수정
+[33md3e85f0[m 친구 삭제 스와이프 통일
+[33mfcaa778[m 친주 상세 일정 조회
+[33mb56e3da[m 채팅방 목록 수정
+[33mdb887c3[m 트립토 호출버튼 생성
+[33md1b2b04[m 스낵바 삭제
+[33me115169[m 네이버 지도 sdk
+[33m49fdfb2[m 일정 조회
+[33m787084c[m 친구 목록 새로고침
+[33me6e3b76[m 친구 목록 새로고침
+[33m63834db[m[33m ([m[1;32mchattin[m[33m)[m 채팅 병합 완료
+[33m157fbcc[m 병합완
+[33m4399fab[m[33m ([m[1;31morigin/merge-1[m[33m)[m 채팅방 병합
+[33mc76d70e[m 채팅 리스트 수정
+[33m3130cea[m .vscode 폴더 및 설정 파일 Git 추적 제외
+[33m5b30856[m 친구 삭제 기능
+[33m74b1375[m 챗봇 연동
+[33m6fdc0a6[m 병합전
+[33mf067de7[m 채팅탭 중간 업로드
+[33md5b16fd[m 친구 요청 최종
+[33ma03fcb8[m 친구 리스트 수정
+[33m4ba8cbb[m 친구요청 수락
+[33mf869c52[m home_screen.dart 파일 삭제
+[33m9417dea[m 로그인 및 프로필 관련 수정 사항 적용
+[33m4432707[m 프론트 코드 1차 병합
+[33mc0dab35[m 채팅 제외 API 연동
+[33m1bbf8ce[m[33m ([m[1;31morigin/일단-임시로-올려둠[m[33m)[m 6/19
+[33mbbced51[m 오늘 수정한 내용 업데이트
+[33mb781a2e[m 오늘 수정한 내용 업데이트
+[33m34ddf6d[m Merge pull request #6 from Capstone-Tripto/test
+[33m6d0f56e[m Merge branch 'main' of https://github.com/Capstone-Tripto/Tripto-Frontend into test
+[33m0c4b6b8[m 프론트엔드 초기 코드 업로드
+[33mb9ed60f[m feat: 카카오 로그인 무한로딩 및 DB 오타 수정 완료
+[33m66acf1f[m yarrrrrrrrr
+[33m8ad28c3[m Merge pull request #5 from Capstone-Tripto/test
+[33m76216e0[m 제발돼라
+[33m136ee64[m test
+[33mc8cf77e[m test
+[33m11eb8e7[m Merge pull request #3 from Capstone-Tripto/2-로그인2
+[33m7786777[m test
+[33m7da1562[m test
+[33m5eeb43d[m 선호스타일 수정
+[33m5902ac2[m First commit
+[33m0366360[m Delete app
+[33mbdf261f[m Create app

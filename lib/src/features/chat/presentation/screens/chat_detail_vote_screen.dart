@@ -19,10 +19,11 @@ class ChatDetailVoteScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
-  int _expandedIndex = 0; 
+  int _expandedIndex = 0;
   Map<String, dynamic>? _voteDetail;
   bool _isLoading = true;
   bool _isActionLoading = false;
+  String? _errorMessage;
 
   String get _apiUrl {
     String base = AuthStorage.baseUrl.trim().replaceAll('\n', '').replaceAll('\r', '');
@@ -41,8 +42,14 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
     _fetchVoteDetail();
   }
 
+  // 💡 투표 상세 조회 및 방어 로직 (에러/래퍼 처리)
   Future<void> _fetchVoteDetail({bool updateLoadingState = true}) async {
-    if (updateLoadingState) setState(() => _isLoading = true);
+    if (updateLoadingState) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
     try {
       final response = await http.get(
         Uri.parse('$_apiUrl/vote/${widget.voteId}'),
@@ -50,15 +57,40 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        dynamic data = jsonDecode(utf8.decode(response.bodyBytes));
+        // 응답 래퍼 방어 unwrap
+        if (data is Map && data.containsKey('data') && data['data'] is Map) {
+          data = data['data'];
+        } else if (data is Map && data.containsKey('vote') && data['vote'] is Map) {
+          data = data['vote'];
+        }
+
         if (mounted) {
           setState(() {
-            _voteDetail = data;
+            _voteDetail = data as Map<String, dynamic>;
+            _errorMessage = null;
+          });
+        }
+      } else {
+        String detailMsg = '투표 정보를 불러오지 못했습니다. (코드: ${response.statusCode})';
+        try {
+          final err = jsonDecode(utf8.decode(response.bodyBytes));
+          if (err['detail'] != null) detailMsg = err['detail'].toString();
+        } catch (_) {}
+
+        if (mounted) {
+          setState(() {
+            _errorMessage = detailMsg;
           });
         }
       }
     } catch (e) {
       debugPrint('투표 상세 조회 에러: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = '네트워크 연결 오류가 발생했습니다: $e';
+        });
+      }
     } finally {
       if (updateLoadingState && mounted) {
         setState(() => _isLoading = false);
@@ -183,7 +215,7 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('투표가 삭제되었습니다.')),
           );
-          Navigator.pop(context, true); // 목록 새로고침 트리거
+          Navigator.pop(context, 'deleted');
         }
       } else {
         final err = jsonDecode(utf8.decode(response.bodyBytes));
@@ -195,6 +227,339 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
       }
     } catch (e) {
       debugPrint('투표 삭제 에러: $e');
+    } finally {
+      if (mounted) setState(() => _isActionLoading = false);
+    }
+  }
+
+  // 최다 득표 동점 판별 및 분기
+  void _finalizeVote() {
+    if (_isActionLoading) return;
+
+    final List<dynamic> snapshots = _voteDetail?['snapshots'] ?? [];
+    final List<dynamic> results = _voteDetail?['results'] ?? [];
+
+    if (snapshots.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('확정할 일정 후보가 없습니다.')),
+      );
+      return;
+    }
+
+    final Map<int, int> voteCountMap = {};
+    for (var r in results) {
+      final int sId = int.tryParse(r['snapshot_id']?.toString() ?? '0') ?? 0;
+      final int count = int.tryParse(r['vote_count']?.toString() ?? '0') ?? 0;
+      if (sId > 0) voteCountMap[sId] = count;
+    }
+
+    int maxVotes = -1;
+    for (var s in snapshots) {
+      final int sId = int.tryParse(s['snapshot_id']?.toString() ?? '0') ?? 0;
+      final int count = voteCountMap[sId] ?? 0;
+      if (count > maxVotes) {
+        maxVotes = count;
+      }
+    }
+
+    final List<dynamic> winningCandidates = snapshots.where((s) {
+      final int sId = int.tryParse(s['snapshot_id']?.toString() ?? '0') ?? 0;
+      final int count = voteCountMap[sId] ?? 0;
+      return count == maxVotes;
+    }).toList();
+
+    // 동점인 경우 방장 선택 바텀시트, 단독 1위인 경우 바로 확인 다이얼로그
+    if (winningCandidates.length > 1) {
+      _showTieBreakerBottomSheet(winningCandidates, voteCountMap);
+    } else {
+      final singleWinner = winningCandidates.first;
+      final int winnerSnapId = int.tryParse(singleWinner['snapshot_id']?.toString() ?? '0') ?? 0;
+      _showSingleWinnerDialog(singleWinner, winnerSnapId);
+    }
+  }
+
+  void _showSingleWinnerDialog(dynamic winnerSnapshot, int winnerSnapId) {
+    final String title = winnerSnapshot['plan_title'] ?? '일정';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('일정 최종 확정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+        content: Text(
+          '최다 득표된 [$title] 일정을 최종 확정하시겠습니까?\n모든 멤버의 여행 탭에 자동 등록됩니다.',
+          style: const TextStyle(fontSize: 13.5, color: Color(0xFF475569), fontFamily: 'Pretendard', height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('취소', style: TextStyle(color: Colors.grey, fontFamily: 'Pretendard')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF524582),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _executeFinalize(winningSnapshotId: winnerSnapId > 0 ? winnerSnapId : null);
+            },
+            child: const Text('확정', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTieBreakerBottomSheet(List<dynamic> tiedCandidates, Map<int, int> voteCountMap) {
+    final List<dynamic> snapshots = _voteDetail?['snapshots'] ?? [];
+    int selectedSnapshotId = int.tryParse(tiedCandidates.first['snapshot_id']?.toString() ?? '0') ?? 0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(20, 24, 20, MediaQuery.of(context).padding.bottom + 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDE9FE),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.how_to_vote_rounded, color: Color(0xFF524582), size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          '동점 일정 최종 선택',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF1E293B), fontFamily: 'Pretendard'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '최다 득표 일정이 동점입니다. 최종 일정으로 확정할 후보를 하나 선택해 주세요.',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF64748B), fontFamily: 'Pretendard'),
+                  ),
+                  const SizedBox(height: 18),
+                  ...tiedCandidates.map((candidate) {
+                    final int snapId = int.tryParse(candidate['snapshot_id']?.toString() ?? '0') ?? 0;
+                    final int originalIdx = snapshots.indexOf(candidate);
+                    final String title = candidate['plan_title'] ?? '후보 ${originalIdx + 1}';
+                    final int votes = voteCountMap[snapId] ?? 0;
+                    final bool isSelected = (selectedSnapshotId == snapId);
+
+                    return GestureDetector(
+                      onTap: () {
+                        setModalState(() {
+                          selectedSnapshotId = snapId;
+                        });
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFFFAF5FF) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFF524582) : const Color(0xFFE2E8F0),
+                            width: isSelected ? 1.8 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                              color: isSelected ? const Color(0xFF524582) : const Color(0xFF94A3B8),
+                              size: 22,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '후보 ${originalIdx + 1}. $title',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                      color: const Color(0xFF1E293B),
+                                      fontFamily: 'Pretendard',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    '$votes표 득표',
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontFamily: 'Pretendard'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF524582),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _executeFinalize(winningSnapshotId: selectedSnapshotId);
+                      },
+                      child: const Text(
+                        '이 일정으로 최종 확정하기',
+                        style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Pretendard'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // 💡 백엔드 finalize API 호출 (winner_snapshot_id 키 전송) 및 일정 탭 이동
+  Future<void> _executeFinalize({int? winningSnapshotId}) async {
+    if (_isActionLoading) return;
+    setState(() => _isActionLoading = true);
+
+    try {
+      final Map<String, dynamic> bodyData = {};
+      if (winningSnapshotId != null && winningSnapshotId > 0) {
+        // 백엔드 Pydantic 필드명 일치
+        bodyData["winner_snapshot_id"] = winningSnapshotId;
+        bodyData["winning_snapshot_id"] = winningSnapshotId;
+      }
+
+      final response = await http.post(
+        Uri.parse('$_apiUrl/vote/${widget.voteId}/finalize'),
+        headers: AuthStorage.authHeaders,
+        body: jsonEncode(bodyData),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        dynamic responseData;
+        try {
+          responseData = jsonDecode(utf8.decode(response.bodyBytes));
+        } catch (_) {}
+
+        final List<dynamic> snapshots = _voteDetail?['snapshots'] ?? [];
+        dynamic winningSnapshot;
+
+        final int? targetWinnerId = int.tryParse(
+          responseData?['winner_snapshot_id']?.toString() ??
+          responseData?['winning_snapshot_id']?.toString() ??
+          winningSnapshotId?.toString() ??
+          _voteDetail?['winner_snapshot_id']?.toString() ?? '',
+        );
+
+        if (targetWinnerId != null && targetWinnerId > 0) {
+          winningSnapshot = snapshots.firstWhere(
+            (s) => int.tryParse(s['snapshot_id']?.toString() ?? '') == targetWinnerId,
+            orElse: () => snapshots.isNotEmpty ? snapshots[0] : null,
+          );
+        } else if (snapshots.isNotEmpty) {
+          winningSnapshot = snapshots[0];
+        }
+
+        if (winningSnapshot != null) {
+          final int travelId = int.tryParse(
+            responseData?['travel_id']?.toString() ??
+            winningSnapshot['snapshot_id']?.toString() ??
+            widget.voteId.toString(),
+          ) ?? widget.voteId;
+
+          final String title = winningSnapshot['plan_title'] ?? '최종 확정된 여행';
+          final String city = winningSnapshot['city'] ?? '국내';
+
+          DateTime startDate = DateTime.now().add(const Duration(days: 7));
+          DateTime endDate = startDate.add(const Duration(days: 2));
+
+          if (winningSnapshot['traveldates'] != null) {
+            try {
+              final dates = winningSnapshot['traveldates'].toString().split('~');
+              if (dates.length == 2) {
+                startDate = DateTime.parse(dates[0].trim());
+                endDate = DateTime.parse(dates[1].trim());
+              }
+            } catch (_) {}
+          }
+
+          final createdTravel = TravelModel(
+            travel_id: travelId,
+            owner_id: int.tryParse(_voteDetail?['creator_id']?.toString() ?? '1') ?? 1,
+            title: title,
+            destination: city,
+            start_date: startDate,
+            end_date: endDate,
+            status: TripStatus.upcoming,
+          );
+
+          final parsedSchedules = _parseSnapshotToSchedules(winningSnapshot);
+          ref.read(scheduleProvider.notifier).setSchedules(
+            parsedSchedules,
+            travelId: travelId.toString(),
+          );
+          ref.read(selectedDayProvider.notifier).state = 1;
+
+          // 여행 목록 새로고침
+          ref.invalidate(travelsProvider);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('여행 일정이 최종 확정되었습니다! 여행 탭에 등록됩니다.')),
+            );
+
+            // 확정된 일정의 상세 화면으로 교체 이동
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ScheduleDetailScreen(schedule: createdTravel),
+              ),
+              result: 'finalized',
+            );
+          }
+        } else {
+          if (mounted) {
+            Navigator.pop(context, 'finalized');
+          }
+        }
+      } else {
+        final err = jsonDecode(utf8.decode(response.bodyBytes));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(err['detail'] ?? '확정 처리 실패')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('최종 확정 에러: $e');
     } finally {
       if (mounted) setState(() => _isActionLoading = false);
     }
@@ -301,155 +666,7 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
       }
     }
 
-    if (schedules.isEmpty) {
-      schedules.addAll([
-        ScheduleModel(
-          schedule_id: '${widget.voteId}_1',
-          title: '${snapshot['city'] ?? '여행지'} 도착 및 관광',
-          start_time: '10:00:00',
-          category: ScheduleType.move,
-          day_number: 1,
-          place_name: snapshot['city'] ?? '여행지',
-          place_address: snapshot['city'] ?? '',
-        ),
-        ScheduleModel(
-          schedule_id: '${widget.voteId}_2',
-          title: '대표 맛집 식사',
-          start_time: '12:30:00',
-          category: ScheduleType.eat,
-          day_number: 1,
-          place_name: '현지 식당',
-          place_address: snapshot['city'] ?? '',
-        ),
-      ]);
-    }
-
     return schedules;
-  }
-
-  Future<void> _finalizeVote() async {
-    if (_isActionLoading) return;
-
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('일정 최종 확정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
-        content: const Text(
-          '최다 득표된 일정을 최종 여행 계획으로 확정하고 홈 화면 일정 탭에 등록하시겠습니까?',
-          style: TextStyle(fontSize: 13.5, color: Color(0xFF475569), fontFamily: 'Pretendard', height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소', style: TextStyle(color: Colors.grey, fontFamily: 'Pretendard')),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF524582),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('확정', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Pretendard')),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    setState(() => _isActionLoading = true);
-
-    try {
-      final response = await http.post(
-        Uri.parse('$_apiUrl/vote/${widget.voteId}/finalize'),
-        headers: AuthStorage.authHeaders,
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        dynamic responseData;
-        try {
-          responseData = jsonDecode(utf8.decode(response.bodyBytes));
-        } catch (_) {}
-
-        final List<dynamic> snapshots = _voteDetail?['snapshots'] ?? [];
-        dynamic winningSnapshot;
-
-        final int? winnerSnapshotId = int.tryParse(responseData?['winner_snapshot_id']?.toString() ?? _voteDetail?['winner_snapshot_id']?.toString() ?? '');
-        if (winnerSnapshotId != null && winnerSnapshotId > 0) {
-          winningSnapshot = snapshots.firstWhere(
-            (s) => int.tryParse(s['snapshot_id']?.toString() ?? '') == winnerSnapshotId,
-            orElse: () => snapshots.isNotEmpty ? snapshots[0] : null,
-          );
-        } else if (snapshots.isNotEmpty) {
-          winningSnapshot = snapshots[0];
-        }
-
-        if (winningSnapshot != null) {
-          final int travelId = int.tryParse(responseData?['travel_id']?.toString() ?? winningSnapshot['snapshot_id']?.toString() ?? widget.voteId.toString()) ?? widget.voteId;
-          final String title = winningSnapshot['plan_title'] ?? '최종 확정된 여행';
-          final String city = winningSnapshot['city'] ?? '국내';
-
-          DateTime startDate = DateTime.now().add(const Duration(days: 7));
-          DateTime endDate = startDate.add(const Duration(days: 2));
-
-          if (winningSnapshot['traveldates'] != null) {
-            try {
-              final dates = winningSnapshot['traveldates'].toString().split('~');
-              if (dates.length == 2) {
-                startDate = DateTime.parse(dates[0].trim());
-                endDate = DateTime.parse(dates[1].trim());
-              }
-            } catch (_) {}
-          }
-
-          final createdTravel = TravelModel(
-            travel_id: travelId,
-            owner_id: int.tryParse(_voteDetail?['creator_id']?.toString() ?? '1') ?? 1,
-            title: title,
-            destination: city,
-            start_date: startDate,
-            end_date: endDate,
-            status: TripStatus.upcoming,
-          );
-
-          final parsedSchedules = _parseSnapshotToSchedules(winningSnapshot);
-          ref.read(scheduleProvider.notifier).setSchedules(parsedSchedules);
-          ref.read(selectedDayProvider.notifier).state = 1;
-
-          ref.invalidate(travelsProvider);
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('여행 일정이 최종 확정되어 일정 탭에 등록되었습니다.')),
-            );
-
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ScheduleDetailScreen(schedule: createdTravel),
-              ),
-            );
-          }
-        } else {
-          if (mounted) {
-            Navigator.pop(context, true);
-          }
-        }
-      } else {
-        final err = jsonDecode(utf8.decode(response.bodyBytes));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(err['detail'] ?? '확정 처리 실패')),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('최종 확정 에러: $e');
-    } finally {
-      if (mounted) setState(() => _isActionLoading = false);
-    }
   }
 
   String _formatCurrency(dynamic value) {
@@ -470,10 +687,53 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
       );
     }
 
-    final bool isActive = (_voteDetail?['status'] == 'active');
-    final String voteType = _voteDetail?['vote_type']?.toString() ?? 'group';
+    // 에러 발생 시 UI (투표 마감으로 오인 표시되지 않도록 분기)
+    if (_errorMessage != null && _voteDetail == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF1E293B), size: 18),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 48),
+                const SizedBox(height: 14),
+                Text(
+                  _errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFF475569), fontSize: 14, fontFamily: 'Pretendard'),
+                ),
+                const SizedBox(height: 18),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF524582),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () => _fetchVoteDetail(),
+                  child: const Text('다시 시도', style: TextStyle(color: Colors.white, fontFamily: 'Pretendard')),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
-    final List<dynamic> snapshots = _voteDetail?['snapshots'] ?? [];
+    // 대소문자 무관 status 체크
+    final String statusStr = _voteDetail?['status']?.toString().toLowerCase() ?? '';
+    final bool isActive = (statusStr == 'active');
+    final String voteType = _voteDetail?['vote_type']?.toString().toLowerCase() ?? 'group';
+
+    final List<dynamic> snapshots = _voteDetail?['snapshots'] ?? _voteDetail?['itineraries'] ?? [];
     final List<dynamic> results = _voteDetail?['results'] ?? [];
 
     final Map<int, int> voteCountMap = {};
@@ -502,7 +762,6 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          // 💡 진행 중인 투표일 때 [투표 삭제] 및 [일정 확정] 노출
           if (isActive) ...[
             TextButton(
               onPressed: _deleteVote,
@@ -557,7 +816,12 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
                         ),
                         child: Text(
                           isActive ? '진행 중' : '투표 마감',
-                          style: TextStyle(fontSize: 11, color: isActive ? const Color(0xFF2563EB) : const Color(0xFF64748B), fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isActive ? const Color(0xFF2563EB) : const Color(0xFF64748B),
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Pretendard',
+                          ),
                         ),
                       ),
                     ],
@@ -578,7 +842,12 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
             const SizedBox(height: 18),
 
             if (snapshots.isEmpty)
-              const Center(child: Padding(padding: EdgeInsets.all(40), child: Text('투표 가능한 일정 후보가 없습니다.', style: TextStyle(color: Colors.grey, fontFamily: 'Pretendard'))))
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Text('투표 가능한 일정 후보가 없습니다.', style: TextStyle(color: Colors.grey, fontFamily: 'Pretendard')),
+                ),
+              )
             else
               for (int i = 0; i < snapshots.length; i++) ...[
                 _buildCandidateCard(
@@ -691,7 +960,7 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
                     ],
                   ] else
                     const Text('등록된 일정이 없습니다.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5, fontFamily: 'Pretendard')),
-                  
+
                   if (cost.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Container(
@@ -726,7 +995,7 @@ class _ChatDetailVoteScreenState extends ConsumerState<ChatDetailVoteScreen> {
                   const SizedBox(height: 16),
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
                   const SizedBox(height: 12),
-                  
+
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [

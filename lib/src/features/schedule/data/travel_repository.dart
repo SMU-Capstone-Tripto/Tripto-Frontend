@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/travel_model.dart';
 import '../../../core/network/dio_client.dart';
@@ -12,7 +13,6 @@ class TravelRepository {
   Future<List<TravelModel>> getTravels() async {
     try {
       final res = await _dio.get('/travels');
-
       final list = res.data as List;
       return list
           .map((e) => TravelModel.fromJson(e as Map<String, dynamic>))
@@ -43,19 +43,14 @@ class TravelRepository {
   // ── 4. 친구 여행 목록 조회 (GET) ──
   Future<List<TravelModel>> getFriendTravels(int friendId) async {
     try {
-      // 1. 피드 API를 호출해서 모든 친구의 여행 일정을 통째로 가져옵니다.
       final res = await _dio.get('/feed');
-
       final list = res.data as List;
 
-      // 2. 💡 여기가 핵심! 리스트 중에서 'owner_id'가 내가 누른 친구의 ID와 일치하는 것만 걸러냅니다.
       final filteredList = list.where((e) {
         final item = e as Map<String, dynamic>;
-        // JSON 데이터의 owner_id와 전달받은 friendId가 같은지 비교
         return item['owner_id'] == friendId;
       }).toList();
 
-      // 3. 걸러낸 데이터만 모델로 변환해서 화면에 넘겨줍니다.
       return filteredList
           .map((e) => TravelModel.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -67,33 +62,58 @@ class TravelRepository {
   // ── 5. 친구 여행 상세 조회 (GET) ──
   Future<TravelModel> getFriendTravelDetail(int travelId) async {
     try {
-      // 명세서에 맞춰 /feed/{travel_id} 호출
       final res = await _dio.get('/feed/$travelId');
       return TravelModel.fromJson(res.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw handleDioError(e);
     }
   }
+
+  // ── 6. 여행 상세 원본 조회 (타입 캐스팅 함정 방어 및 디버그 로깅) ──
+  Future<Map<String, dynamic>> getTravelDetailRaw(String travelId) async {
+    try {
+      Response res;
+      try {
+        res = await _dio.get('/travels/$travelId');
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 404) {
+          // 백엔드 단수/복수 라우트 방어
+          res = await _dio.get('/travel/$travelId');
+        } else {
+          rethrow;
+        }
+      }
+
+      debugPrint('📡 [TravelDetail API] 응답 코드: ${res.statusCode}');
+
+      if (res.data != null && res.data is Map) {
+        return Map<String, dynamic>.from(res.data as Map);
+      }
+      return {};
+    } on DioException catch (e) {
+      debugPrint('🚨 [TravelDetail API 에러]: 상태코드=${e.response?.statusCode}, 메시지=$e');
+      throw handleDioError(e);
+    } catch (e) {
+      debugPrint('🚨 [TravelDetail 기타 파싱 에러]: $e');
+      return {};
+    }
+  }
 }
 
-// Provider를 통해 외부에서 TravelRepository를 주입받아 사용할 수 있도록 설정
 final travelRepositoryProvider = Provider<TravelRepository>((ref) {
   final dio = ref.watch(dioClientProvider).dio;
   return TravelRepository(dio);
 });
 
-// 화면에서 데이터를 읽어올 때 사용할 Provider
 final savedTravelsProvider = FutureProvider<List<TravelModel>>((ref) async {
   return ref.watch(travelRepositoryProvider).getTravels();
 });
 
-// 친구 여행 목록 조회를 위한 Provider
 final friendTravelsProvider = FutureProvider.autoDispose
     .family<List<TravelModel>, int>((ref, friendId) async {
   return ref.watch(travelRepositoryProvider).getFriendTravels(friendId);
 });
 
-// 친구 여행 상세 조회를 위한 Provider
 final friendTravelDetailProvider =
     FutureProvider.autoDispose.family<TravelModel, int>((ref, travelId) async {
   return ref.watch(travelRepositoryProvider).getFriendTravelDetail(travelId);

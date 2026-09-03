@@ -42,7 +42,6 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
     });
   }
 
-  // ── 공유 버튼 동작 함수 ──
   void _shareTravel() {
     final title = widget.schedule.title;
     final travelId = widget.schedule.travel_id;
@@ -61,6 +60,23 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      // 💡 1. 둥근 원형 연필 아이콘 FAB
+      floatingActionButton: (!_isMapView && !widget.isFriendFeed)
+          ? FloatingActionButton(
+              backgroundColor: const Color(0xFF524582),
+              elevation: 4,
+              shape: const CircleBorder(),
+              onPressed: () {
+                showAddScheduleSheet(
+                  context,
+                  travelId: widget.schedule.travel_id.toString(),
+                  dayNumber: selectedDay,
+                  tripStartDate: widget.schedule.start_date,
+                );
+              },
+              child: const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
+            )
+          : null,
       body: Column(
         children: [
           // ── 헤더 ──
@@ -141,7 +157,6 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
 
           // 일정 뷰
           if (!_isMapView) ...[
-            // Day 수평 스크롤 탭
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: const BoxDecoration(
@@ -200,15 +215,16 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
               ),
             ),
 
-            // 타임라인 리스트
             Expanded(
               child: dayItems.isEmpty
                   ? Center(
                       child: Text(
-                        'Day $selectedDay 에 등록된 일정이 없습니다.',
+                        'Day $selectedDay 에 등록된 일정이 없습니다.\n우측 하단의 연필 버튼을 눌러 새 일정을 추가해 보세요.',
+                        textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Color(0xFF94A3B8),
                           fontSize: 13.5,
+                          height: 1.5,
                           fontFamily: 'Pretendard',
                         ),
                       ),
@@ -221,15 +237,18 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
                         isLast: i == dayItems.length - 1,
                         onTap: () async {
                           final targetId = dayItems[i].schedule_id.toString();
-
                           final realMemo = await ref
                               .read(scheduleRepositoryProvider)
                               .getScheduleMemo(targetId);
 
                           if (context.mounted) {
-                            final forcedItem =
-                                dayItems[i].copyWith(memo: realMemo);
-                            showScheduleItemDetail(context, forcedItem);
+                            final forcedItem = dayItems[i].copyWith(memo: realMemo);
+                            showScheduleItemDetail(
+                              context,
+                              forcedItem,
+                              travelId: widget.schedule.travel_id.toString(),
+                              tripStartDate: widget.schedule.start_date,
+                            );
                           }
                         },
                       ),
@@ -237,7 +256,7 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
             ),
           ],
 
-          // ── 지도 뷰 ──
+          // 지도 뷰
           if (_isMapView)
             Expanded(
               child: _MapView(
@@ -251,7 +270,6 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
   }
 }
 
-// 🗺️ 구글 지도 뷰
 class _MapView extends ConsumerStatefulWidget {
   final TravelModel schedule;
   final int totalDays;
@@ -273,7 +291,6 @@ class _MapViewState extends ConsumerState<_MapView> {
 
     return Column(
       children: [
-        // Day 필터
         Container(
           color: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 6),
@@ -313,7 +330,6 @@ class _MapViewState extends ConsumerState<_MapView> {
           ),
         ),
 
-        // 구글 지도 렌더링 영역
         Expanded(
           child: mapPinsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF524582))),
@@ -377,7 +393,6 @@ class _MapViewState extends ConsumerState<_MapView> {
           ),
         ),
 
-        // 하단 장소 카드
         if (dayItems.isNotEmpty)
           () {
             final activeItem = dayItems.firstWhere(
