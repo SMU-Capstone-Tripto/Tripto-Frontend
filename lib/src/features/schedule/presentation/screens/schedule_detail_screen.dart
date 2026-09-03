@@ -34,6 +34,9 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final travelId = widget.schedule.travel_id.toString();
 
+      // 💡 새로운 여행 상세 화면 진입 시 항상 Day 1로 초기화
+      ref.read(selectedDayProvider.notifier).state = 1;
+
       if (widget.isFriendFeed) {
         ref.read(scheduleProvider.notifier).fetchFriendSchedules(travelId);
       } else {
@@ -60,7 +63,6 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      // 💡 1. 둥근 원형 연필 아이콘 FAB
       floatingActionButton: (!_isMapView && !widget.isFriendFeed)
           ? FloatingActionButton(
               backgroundColor: const Color(0xFF524582),
@@ -134,7 +136,6 @@ class _ScheduleDetailScreenState extends ConsumerState<ScheduleDetailScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // 일정 / 지도 탭
                 Row(
                   children: [
                     _ViewTab(

@@ -26,7 +26,11 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
   final ScheduleRepository repository;
   final TravelRepository travelRepository;
 
+  // 여행 ID별 독립 메모리 캐시 (travelId -> List<ScheduleModel>)
   static final Map<String, List<ScheduleModel>> _detailedScheduleCache = {};
+  
+  // 현재 보고 있는 여행 ID 추적 (데이터 혼선 방지)
+  String? _currentTravelId;
 
   ScheduleItemsNotifier(this.repository, this.travelRepository) : super([]);
 
@@ -66,10 +70,10 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
     final t = text.trim();
     if (t.isEmpty) return true;
 
+    if (RegExp(r'\d{1,2}:\d{2}').hasMatch(t)) return false;
     if (RegExp(r'^\[?\s*(?:Day\s*\d+|\d+일차)[^\]\n]*\]?$', caseSensitive: false).hasMatch(t)) {
       return true;
     }
-
     if (t == '일정' || t == '상세 일정' || t == '여행 일정' || t == '코스' || t == '일정표') return true;
     if (RegExp(r'^\[?\s*(?:\d{4}[-./년\s]*)?\d{1,2}[-./월\s]*\d{1,2}(?:일)?\s*(?:\([A-Za-z가-힣]+\))?\s*\]?$').hasMatch(t)) return true;
 
@@ -96,15 +100,12 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
     return s;
   }
 
-  // 💡 요금미정 및 금액 추출/정제
   static _CostExtractResult _extractAndCleanCost(String text, int? existingCost) {
     int? cost = (existingCost != null && existingCost > 0) ? existingCost : null;
     String cleaned = text;
 
-    // 1. "·요금미정", "요금 미정" 및 앞머리 기호 완전 삭제
     cleaned = cleaned.replaceAll(RegExp(r'[·,/~–—\s]*요금\s*미정', caseSensitive: false), '').trim();
 
-    // 2. 숫자+원 추출
     final costRegex = RegExp(
       r'(?:[·,/~–—\s]*)(?:(?:예상\s*비용|비용|경비|약|1인당|1인|인당|요금)\s*[:\s]*)?([\d,]+)\s*원',
       caseSensitive: false,
@@ -120,7 +121,6 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
       cleaned = cleaned.replaceFirst(match.group(0)!, '').trim();
     }
 
-    // 3. 잔여 괄호 및 기호 정리
     cleaned = cleaned.replaceAll(RegExp(r'[·,·/]\s*\)'), ')');
     cleaned = cleaned.replaceAll(RegExp(r'\(\s*[·,·/]'), '(');
     cleaned = cleaned.replaceAll(RegExp(r'\(\s*\)'), '').trim();
@@ -310,10 +310,11 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
   }
 
   void setSchedules(List<ScheduleModel> items, {String? travelId}) {
-    state = items;
     if (travelId != null && travelId.isNotEmpty) {
+      _currentTravelId = travelId;
       _detailedScheduleCache[travelId] = items;
     }
+    state = items;
   }
 
   Future<void> saveOrUpdateSchedule(
@@ -435,14 +436,32 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
     _detailedScheduleCache[travelId] = newList;
   }
 
+  // 💡 [핵심 해결] 여행별 상태 격리 (이전 여행 데이터가 새 여행에 노출되지 않도록 조치)
   Future<void> fetchSchedules(String travelId) async {
     try {
-      final cached = _detailedScheduleCache[travelId];
-      if (cached != null && cached.isNotEmpty) {
-        state = cached;
-        return;
+      debugPrint('🚀 [fetchSchedules 시작] travelId: $travelId (기존 travelId: $_currentTravelId)');
+
+      // 다른 여행으로 전환 시 이전 여행 데이터 즉시 비우고 캐시 확인
+      if (_currentTravelId != travelId) {
+        _currentTravelId = travelId;
+        final cached = _detailedScheduleCache[travelId];
+        if (cached != null && cached.isNotEmpty) {
+          debugPrint('🛡️ [캐시 복원] 여행 $travelId 캐시 적용 (${cached.length}개)');
+          state = cached;
+          return;
+        } else {
+          // 캐시가 없으면 이전 여행 데이터를 화면에서 즉시 제거
+          state = [];
+        }
+      } else {
+        final cached = _detailedScheduleCache[travelId];
+        if (cached != null && cached.isNotEmpty) {
+          state = cached;
+          return;
+        }
       }
 
+      // 1. GET /travels/{travel_id} 에서 itinerary 조회
       try {
         final travelDetail = await travelRepository.getTravelDetailRaw(travelId);
         dynamic rawItinerary = travelDetail['itinerary'];
@@ -462,40 +481,40 @@ class ScheduleItemsNotifier extends StateNotifier<List<ScheduleModel>> {
         if (rawItinerary is List && rawItinerary.isNotEmpty) {
           final parsedFromItinerary = parseItinerary(rawItinerary, city: city);
           if (parsedFromItinerary.isNotEmpty) {
+            debugPrint('✅ [itinerary 파싱 성공] 여행 $travelId 아이템 ${parsedFromItinerary.length}개');
             state = parsedFromItinerary;
             _detailedScheduleCache[travelId] = parsedFromItinerary;
             return;
           }
         }
       } catch (e) {
-        debugPrint('travel detail itinerary 파싱 실패 또는 필드 없음: $e');
+        debugPrint('travel detail itinerary 파싱 실패: $e');
       }
 
+      // 2. 수동 생성 일정이거나 DB schedules 조회
       final items = await repository.getSchedules(travelId);
       final parsed = items.isNotEmpty ? _expandAndParseSchedules(items) : <ScheduleModel>[];
 
       if (parsed.isNotEmpty) {
+        debugPrint('✅ [DB schedules 파싱 성공] 여행 $travelId 아이템 ${parsed.length}개');
         state = parsed;
         _detailedScheduleCache[travelId] = parsed;
         return;
       }
 
-      if (state.isNotEmpty) {
-        return;
-      }
-
+      // 3. 해당 여행에 등록된 일정이 없다면 빈 리스트 표시 (이전 여행 데이터 유지 안 함)
       state = [];
     } catch (e) {
       debugPrint('🚨 [스케줄 불러오기 에러]: $e');
       final cached = _detailedScheduleCache[travelId];
-      if (cached != null && cached.isNotEmpty) {
-        state = cached;
-      }
+      state = cached ?? [];
     }
   }
 
   Future<void> fetchFriendSchedules(String travelId) async {
     try {
+      _currentTravelId = travelId;
+      state = [];
       final items = await repository.getFriendSchedules(travelId);
       state = items.isNotEmpty ? _expandAndParseSchedules(items) : [];
     } catch (e) {
