@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
@@ -8,7 +9,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:go_router/go_router.dart';
 
-// 🔥 인증 전용 단일 스토리지 임포트
 import '../../../core/auth_storage.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -21,15 +21,47 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isObscured = true;
   bool _isIdSaved = false;
+  bool _isAutoLogin = false; // 💡 자동 로그인 체크 상태 추가
   bool _isLoading = false;
+  
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _pwController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    // 로그인 화면 진입 시 기존 토큰 복원 시도
-    AuthStorage.init();
+    _initializeAuthAndLoadSavedId();
+  }
+
+  Future<void> _initializeAuthAndLoadSavedId() async {
+    try {
+      await AuthStorage.init();
+    } catch (_) {}
+
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 1. [자동 로그인 여부 확인]
+    final isAutoLoginEnabled = prefs.getBool('tripto_auto_login') ?? false;
+
+    // 2. [아이디 저장 복원]
+    final savedId = prefs.getString('tripto_saved_login_id') ?? '';
+    
+    if (mounted) {
+      setState(() {
+        if (savedId.isNotEmpty) {
+          _idController.text = savedId;
+          _isIdSaved = true;
+        }
+        _isAutoLogin = isAutoLoginEnabled;
+      });
+    }
+
+    // 3. [자동 로그인 처리] 사용자가 '자동 로그인'을 켰고, 토큰이 유효할 때만 홈으로 스킵!
+    if (isAutoLoginEnabled && AuthStorage.accessToken!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _goToMain();
+      });
+    }
   }
 
   void _navigateTo(Widget page) {
@@ -43,17 +75,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> syncFcmTokenAfterLogin(WidgetRef ref) async {
     try {
-      // 1. 파이어베이스로부터 최신 FCM 디바이스 토큰 발급
       String? fcmToken = await FirebaseMessaging.instance.getToken();
 
       if (fcmToken != null) {
-        // 2. 백엔드 내 정보 수정 API(PATCH /auth/me)를 찔러서 토큰 등록
         final response = await http.patch(
           Uri.parse('${AuthStorage.baseUrl}/auth/me'),
           headers: {
             'Content-Type': 'application/json',
-            'Authorization':
-                'Bearer ${AuthStorage.accessToken}', // 현재 저장된 토큰 활용
+            'Authorization': 'Bearer ${AuthStorage.accessToken}',
           },
           body: jsonEncode({'fcm_token': fcmToken}),
         );
@@ -83,7 +112,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 💡 TokenStorage.baseUrl 대신 AuthStorage.baseUrl로 단일화
       final response = await http.post(
         Uri.parse('${AuthStorage.baseUrl}/auth/login'),
         headers: {'Content-Type': 'application/json'},
@@ -102,12 +130,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         final String refreshToken = responseData['refresh_token'] ?? '';
         final String userId = responseData['user_id']?.toString() ?? '';
 
-        // 🔥 메모리 수혈 + 저장소 저장을 한 번에 처리
         await AuthStorage.setTokens(
           access: accessToken,
           refresh: refreshToken,
           userId: userId,
         );
+
+        // 💡 [아이디 및 자동 로그인 상태 저장]
+        final prefs = await SharedPreferences.getInstance();
+        
+        // 아이디 저장 체크 시 이메일 보관
+        if (_isIdSaved) {
+          await prefs.setString('tripto_saved_login_id', email);
+        } else {
+          await prefs.remove('tripto_saved_login_id');
+        }
+
+        // 자동 로그인 체크 여부 보관
+        await prefs.setBool('tripto_auto_login', _isAutoLogin);
 
         await syncFcmTokenAfterLogin(ref);
 
@@ -138,12 +178,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           initialUrl: url,
           onTokenReceived:
               (accessToken, refreshToken, email, isProfileComplete) async {
-            // 🔥 소셜 로그인 토큰 수혈 및 저장 일원화
             await AuthStorage.setTokens(
               access: accessToken,
               refresh: refreshToken,
               userId: email,
             );
+
+            // 소셜 로그인은 기본적으로 자동 로그인을 켬
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('tripto_auto_login', true);
 
             if (mounted) {
               if (isProfileComplete) {
@@ -216,10 +259,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             setState(() => _isObscured = !_isObscured),
                       ),
                       const SizedBox(height: 15),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: _buildIdSaveCheckbox(),
+                      
+                      // 💡 아이디 저장 & 자동 로그인 체크박스
+                      Row(
+                        children: [
+                          _buildCheckbox(
+                            label: '아이디 저장',
+                            isChecked: _isIdSaved,
+                            onTap: () => setState(() => _isIdSaved = !_isIdSaved),
+                          ),
+                          const SizedBox(width: 24),
+                          _buildCheckbox(
+                            label: '자동 로그인',
+                            isChecked: _isAutoLogin,
+                            onTap: () => setState(() => _isAutoLogin = !_isAutoLogin),
+                          ),
+                        ],
                       ),
+
                       const SizedBox(height: 30),
                       _buildActionButton(
                         label: '로그인',
@@ -350,12 +407,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _buildIdSaveCheckbox() {
+  // 💡 체크박스를 재사용 가능하게 분리한 위젯
+  Widget _buildCheckbox({
+    required String label,
+    required bool isChecked,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _isIdSaved = !_isIdSaved),
+      onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5.0, horizontal: 8.0),
+        padding: const EdgeInsets.symmetric(vertical: 5.0, horizontal: 4.0),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -363,18 +425,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               width: 18,
               height: 18,
               decoration: BoxDecoration(
-                color: _isIdSaved ? Colors.white : Colors.transparent,
+                color: isChecked ? Colors.white : Colors.transparent,
                 border: Border.all(color: Colors.white.withOpacity(0.6)),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: _isIdSaved
+              child: isChecked
                   ? const Icon(Icons.check, size: 14, color: Color(0xFF7145D0))
                   : null,
             ),
             const SizedBox(width: 8),
-            const Text(
-              '아이디 저장',
-              style: TextStyle(
+            Text(
+              label,
+              style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 13,
                 fontFamily: 'Pretendard',

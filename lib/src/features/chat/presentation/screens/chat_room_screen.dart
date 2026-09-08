@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tripto/src/core/auth_storage.dart';
+import 'package:tripto/src/features/chat/presentation/chat_provider.dart';
 import 'chat_room_settings_screen.dart';
 import 'vote_tabs_screen.dart';
 
@@ -383,6 +384,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
         List<Map<String, dynamic>> parsedHistory = [];
         int highestOpponentMsgId = 0;
+        int highestMsgId = 0;
 
         for (var item in historyList) {
           if (item == null) continue;
@@ -390,6 +392,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
           final int msgId =
               int.tryParse(msgMap['message_id']?.toString() ?? '0') ?? 0;
+
+          if (msgId > highestMsgId) highestMsgId = msgId;
 
           if (msgId > 0 && LocalDeletionStorage.isDeleted(msgId)) {
             continue;
@@ -424,7 +428,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             trimmedContent = trimmedContent.replaceAll('```', '').trim();
           }
 
-          // DB에 보관된 카드/메시지 정밀 복원
           if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
             try {
               final jsonParsed = jsonDecode(trimmedContent);
@@ -544,8 +547,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           _scrollToBottom();
         }
 
-        if (highestOpponentMsgId > 0) {
-          _sendReadAcknowledge(highestOpponentMsgId);
+        final int targetAckId = highestOpponentMsgId > 0 ? highestOpponentMsgId : highestMsgId;
+        if (targetAckId > 0) {
+          _sendReadAcknowledge(targetAckId);
+          // 💡 로컬 프로바이더에 최신 읽은 메시지 ID 동기화
+          ref.read(chatProvider.notifier).markRoomAsRead(widget.roomId, lastMsgId: targetAckId);
         }
       }
     } catch (e) {
@@ -555,7 +561,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
   }
 
-  // 💡 방 진입 시 진행 중인 투표가 있으면 투표 카드가 채팅창에 항상 복원되도록 보장
   Future<void> _syncActiveVoteCardIfNeeded() async {
     try {
       final res = await http.get(
@@ -842,6 +847,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
         if (senderId != _myUserId && msgId > 0) {
           _sendReadAcknowledge(msgId);
+          ref.read(chatProvider.notifier).markRoomAsRead(widget.roomId, lastMsgId: msgId);
         }
       }
     } catch (e) {
@@ -857,6 +863,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       };
       _webSocket!.add(jsonEncode(readPayload));
     }
+    _sendHttpReadAcknowledge(messageId);
+  }
+
+  Future<void> _sendHttpReadAcknowledge(int messageId) async {
+    try {
+      await http.post(
+        Uri.parse('${AuthStorage.baseUrl}/chat/${widget.roomId}/read'),
+        headers: AuthStorage.authHeaders,
+        body: jsonEncode({"message_id": messageId}),
+      );
+    } catch (_) {}
   }
 
   Future<void> _handleVoteConfirmResponse(bool isApprove) async {
@@ -1501,7 +1518,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => VoteTabsScreen(roomId: widget.roomId), // 💡 roomId 전달
+                        builder: (_) => VoteTabsScreen(roomId: widget.roomId),
                       ),
                     ).then((result) {
                       if (result == true) {
@@ -2284,7 +2301,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                                     constraints: BoxConstraints(
                                       maxWidth:
                                           MediaQuery.of(context).size.width *
-                                              0.62, // 💡 오버플로우 방지
+                                              0.62,
                                     ),
                                     child: _buildAiVoteCard(cardData),
                                   )
@@ -2293,7 +2310,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                                         constraints: BoxConstraints(
                                           maxWidth:
                                               MediaQuery.of(context).size.width *
-                                                  0.62, // 💡 오버플로우 방지
+                                                  0.62,
                                         ),
                                         child: _buildAiFinalizedCard(cardData),
                                       )
@@ -2567,7 +2584,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => VoteTabsScreen(roomId: widget.roomId), // 💡 roomId 전달
+                      builder: (_) => VoteTabsScreen(roomId: widget.roomId),
                     ),
                   );
                 },

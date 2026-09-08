@@ -263,12 +263,12 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
     } else if (selectedValue == 'leave') {
       final bool? confirm = await _showLeaveConfirmDialog(room.name);
       if (confirm == true && roomId > 0) {
-        // 🛠️ 에러 해결 위치: 위치 인자 형식으로 수정됨
         _leaveRoomSilently(roomId);
       }
     }
   }
 
+  // 💡 [수정] 방 진입 시 즉시 markRoomAsRead 호출
   void _navigateToRoom(ChatModel room, int parsedRoomId) {
     bool isBot = room.type == ChatType.ai;
 
@@ -284,6 +284,11 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with AutomaticK
         if (nick != null && nick.isNotEmpty) roomMemberNames[uId] = nick;
         if (img != null && img.isNotEmpty) roomMemberImages[uId] = img;
       }
+    }
+
+    // 💡 방을 누르는 즉시 로컬 안읽음 카운트를 0으로 초기화
+    if (parsedRoomId > 0) {
+      ref.read(chatProvider.notifier).markRoomAsRead(parsedRoomId);
     }
 
     Navigator.push(

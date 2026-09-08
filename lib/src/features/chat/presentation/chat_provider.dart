@@ -17,10 +17,43 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
   ChatNotifier() : super([]);
   bool _isLoading = false;
 
-  // 🎯 [영구 영속 캐시]: 사용자가 지정한 채팅방 이름을 보존하는 지도
   final Map<int, String> _customRoomNames = {};
 
-  /// 🎯 [낙관적 업데이트]: 사용자 지정 이름 즉시 변경 및 영속 캐시 저장
+  // 💡 [읽음 추적 캐시] 사용자가 읽은 각 방의 최신 메시지 ID 보존
+  final Map<int, int> _lastReadMessageIds = {};
+
+  /// 💡 [낙관적 업데이트] 방 진입 시 안읽음 카운트 즉시 0 처리
+  void markRoomAsRead(int roomId, {int? lastMsgId}) {
+    if (roomId <= 0) return;
+    if (lastMsgId != null && lastMsgId > 0) {
+      final current = _lastReadMessageIds[roomId] ?? 0;
+      if (lastMsgId > current) {
+        _lastReadMessageIds[roomId] = lastMsgId;
+      }
+    }
+
+    state = [
+      for (final room in state)
+        if ((int.tryParse(room.id.toString()) ?? 0) == roomId)
+          ChatModel(
+            id: room.id,
+            name: room.name,
+            rawLastMessage: room.rawLastMessage,
+            cleanLastMessage: room.cleanLastMessage,
+            lastTime: room.lastTime,
+            unreadCount: 0, // 👈 즉시 0으로 설정
+            type: room.type,
+            memberIds: room.memberIds,
+            userNames: room.userNames,
+            humanProfiles: room.humanProfiles,
+            derivedMemberCount: room.derivedMemberCount,
+            updatedAt: room.updatedAt,
+          )
+        else
+          room,
+    ];
+  }
+
   void updateRoomName(int roomId, String newName) {
     if (roomId <= 0 || newName.trim().isEmpty) return;
     final cleanName = newName.trim();
@@ -171,12 +204,16 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
                         roomJson['last_message_time'] = lastMsg['created_at'];
                       }
 
-                      final int myLastReadId = int.tryParse(readStatuses[myUserId.toString()]?.toString() ?? '0') ?? 0;
+                      // 💡 [핵심] 서버의 읽음 상태와 로컬에서 사용자가 읽은 상태 중 더 최신 기준 적용
+                      final int myLastReadIdFromServer = int.tryParse(readStatuses[myUserId.toString()]?.toString() ?? '0') ?? 0;
+                      final int localLastReadId = _lastReadMessageIds[roomId] ?? 0;
+                      final int effectiveLastReadId = localLastReadId > myLastReadIdFromServer ? localLastReadId : myLastReadIdFromServer;
+
                       int unread = 0;
                       for (var m in messages) {
                         final int msgId = int.tryParse(m['message_id']?.toString() ?? '0') ?? 0;
                         final int senderId = int.tryParse(m['sender_id']?.toString() ?? '0') ?? 0;
-                        if (senderId != myUserId && senderId != -1 && msgId > myLastReadId) {
+                        if (senderId != myUserId && senderId != -1 && msgId > effectiveLastReadId) {
                           unread++;
                         }
                       }
@@ -193,7 +230,6 @@ class ChatNotifier extends StateNotifier<List<ChatModel>> {
 
               final ChatModel parsedModel = ChatModel.fromJson(roomJson, myUserId: myUserId);
 
-              // 🎯 [핵심 방어]: 사용자가 바꾼 이름이 저장되어 있다면 백엔드가 돌려준 옛날 이름 대신 사용자 바꾼 이름을 우선 적용
               if (_customRoomNames.containsKey(roomId)) {
                 return ChatModel(
                   id: parsedModel.id,
