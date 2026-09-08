@@ -23,7 +23,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isIdSaved = false;
   bool _isAutoLogin = false; // 💡 자동 로그인 체크 상태 추가
   bool _isLoading = false;
-  
+
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _pwController = TextEditingController();
 
@@ -39,13 +39,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (_) {}
 
     final prefs = await SharedPreferences.getInstance();
-    
+
     // 1. [자동 로그인 여부 확인]
     final isAutoLoginEnabled = prefs.getBool('tripto_auto_login') ?? false;
 
     // 2. [아이디 저장 복원]
     final savedId = prefs.getString('tripto_saved_login_id') ?? '';
-    
+
     if (mounted) {
       setState(() {
         if (savedId.isNotEmpty) {
@@ -57,7 +57,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     // 3. [자동 로그인 처리] 사용자가 '자동 로그인'을 켰고, 토큰이 유효할 때만 홈으로 스킵!
-    if (isAutoLoginEnabled && AuthStorage.accessToken!.isNotEmpty) {
+    if (isAutoLoginEnabled && (AuthStorage.accessToken?.isNotEmpty ?? false)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _goToMain();
       });
@@ -138,7 +138,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         // 💡 [아이디 및 자동 로그인 상태 저장]
         final prefs = await SharedPreferences.getInstance();
-        
+
         // 아이디 저장 체크 시 이메일 보관
         if (_isIdSaved) {
           await prefs.setString('tripto_saved_login_id', email);
@@ -259,20 +259,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             setState(() => _isObscured = !_isObscured),
                       ),
                       const SizedBox(height: 15),
-                      
+
                       // 💡 아이디 저장 & 자동 로그인 체크박스
                       Row(
                         children: [
                           _buildCheckbox(
                             label: '아이디 저장',
                             isChecked: _isIdSaved,
-                            onTap: () => setState(() => _isIdSaved = !_isIdSaved),
+                            onTap: () =>
+                                setState(() => _isIdSaved = !_isIdSaved),
                           ),
                           const SizedBox(width: 24),
                           _buildCheckbox(
                             label: '자동 로그인',
                             isChecked: _isAutoLogin,
-                            onTap: () => setState(() => _isAutoLogin = !_isAutoLogin),
+                            onTap: () =>
+                                setState(() => _isAutoLogin = !_isAutoLogin),
                           ),
                         ],
                       ),

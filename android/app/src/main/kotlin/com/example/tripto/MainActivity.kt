@@ -1,4 +1,4 @@
-package com.example.tripto
+package com.sangmyung.tripto
 
 import io.flutter.embedding.android.FlutterActivity
 

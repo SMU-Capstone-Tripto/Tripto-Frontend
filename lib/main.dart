@@ -22,7 +22,9 @@ void initFCMListener(WidgetRef ref) {
     if (message.data.isNotEmpty) {
       try {
         final newNoti = NotificationModel.fromJson(message.data);
-        ref.read(notificationProvider.notifier).addRealtimeNotification(newNoti);
+        ref
+            .read(notificationProvider.notifier)
+            .addRealtimeNotification(newNoti);
       } catch (e) {
         debugPrint('FCM 알림 파싱 에러: $e');
       }
@@ -36,7 +38,23 @@ void initWebSocketListener(WebSocketChannel channel, WidgetRef ref) {
       try {
         final Map<String, dynamic> data = jsonDecode(message);
         final newNoti = NotificationModel.fromJson(data);
-        ref.read(notificationProvider.notifier).addRealtimeNotification(newNoti);
+
+        // 기존 상태 업데이트 코드는 유지합니다.
+        ref
+            .read(notificationProvider.notifier)
+            .addRealtimeNotification(newNoti);
+
+        // 💡 추가된 부분: 웹소켓 메시지 타입이 봇 상태나 에러일 때 로컬 알림을 띄웁니다.
+        if (data['type'] == 'bot_error' || data['type'] == 'bot_status') {
+          final String title =
+              data['type'] == 'bot_error' ? '⚠️ 에이전트 오류' : 'Tripto 에이전트';
+          final String body = data['content'] ?? '상태가 업데이트되었습니다.';
+
+          FCMService.showLocalNotification(
+            title: title,
+            body: body,
+          );
+        }
       } catch (e) {
         debugPrint('웹소켓 알림 데이터 파싱 에러: $e');
       }
@@ -50,7 +68,7 @@ void initWebSocketListener(WebSocketChannel channel, WidgetRef ref) {
 void main() async {
   // 1. Flutter 엔진 초기화 보장 (가장 먼저 실행)
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // 2. 환경 변수(.env) 로드
   await dotenv.load(fileName: '.env');
 

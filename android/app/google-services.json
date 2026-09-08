@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "659333593204",
-    "project_id": "tripto-e6705",
-    "storage_bucket": "tripto-e6705.firebasestorage.app"
+    "project_number": "1058784360914",
+    "project_id": "tripto-e360b",
+    "storage_bucket": "tripto-e360b.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:659333593204:android:ee65dcdf96cc340f74f921",
+        "mobilesdk_app_id": "1:1058784360914:android:3cdeb4df2b10f5ec66700b",
         "android_client_info": {
-          "package_name": "com.smuratel.tripto"
+          "package_name": "com.sangmyung.tripto"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyC6rcNRtv-0f8kMfPLCH5HCzsJeQghco0c"
+          "current_key": "AIzaSyB_orZYB_EnhIQUSc1b4we-3P-u6q18AVI"
         }
       ],
       "services": {
