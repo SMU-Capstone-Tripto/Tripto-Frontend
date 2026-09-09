@@ -21,10 +21,9 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final trip = ref.watch(nextTripProvider);
     final friendsAsync = ref.watch(friendListProvider);
-    final unreadCount = ref.watch(unreadCountProvider);
+    final unreadCount = ref.watch(unreadCountProvider); // 💡 여기서 알림 개수를 감지
 
     return Scaffold(
-      // 💡 1. 전체 배경색을 트렌디한 연한 보라빛 회백색으로 변경
       backgroundColor: const Color(0xFFF6F5FA),
       body: CustomScrollView(
         slivers: [
@@ -32,8 +31,9 @@ class HomeScreen extends ConsumerWidget {
           SliverToBoxAdapter(
             child: _HomeHeader(
               trip: trip,
+              unreadCount: unreadCount, // 💡 핵심 수정: 헤더 위젯에 알림 개수를 전달합니다!
               onNotifTap: () {
-                context.push('/home/notification'); // 기존 알림 화면으로 이동
+                context.push('/home/notification'); 
               },
               onScheduleTap: () =>
                   context.push('/schedule/detail', extra: trip!),
@@ -53,7 +53,7 @@ class HomeScreen extends ConsumerWidget {
                         width: 4,
                         height: 18,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF8A6BFF), // 💡 포인트 컬러
+                          color: const Color(0xFF8A6BFF),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -62,7 +62,7 @@ class HomeScreen extends ConsumerWidget {
                         '친구',
                         style: TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.w800, // 💡 제목은 w700 이상
+                          fontWeight: FontWeight.w800, 
                           color: Color(0xFF1E2939),
                         ),
                       ),
@@ -101,8 +101,7 @@ class HomeScreen extends ConsumerWidget {
                     sliver: SliverList.builder(
                       itemCount: friends.length,
                       itemBuilder: (_, i) => Padding(
-                        padding:
-                            const EdgeInsets.only(bottom: 12), // 💡 카드 간격 조절
+                        padding: const EdgeInsets.only(bottom: 12), 
                         child: FriendListItem(
                           friend: friends[i],
                           onDelete: () async {
@@ -149,7 +148,6 @@ class _HomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      // 💡 2. 그라데이션 및 부드러운 라운드 처리 적용
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -164,7 +162,7 @@ class _HomeHeader extends StatelessWidget {
         20,
         MediaQuery.of(context).padding.top + 16,
         20,
-        32, // 하단 라운드를 위해 패딩을 약간 늘림
+        32, 
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -190,43 +188,31 @@ class _HomeHeader extends StatelessWidget {
                     '안녕하세요, 여행자님!',
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w400, // 💡 본문 느낌은 w400
+                      fontWeight: FontWeight.w400, 
                       color: Colors.white70,
                     ),
                   ),
                 ],
               ),
-              // ── 알림 버튼 + 읽지 않은 빨간 점 ──
-              Stack(
-                children: [
-                  IconButton(
-                    onPressed: onNotifTap,
-                    icon: const Icon(
-                      Icons.notifications_outlined,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.white.withOpacity(0.15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14), // 💡 투명한 둥근 버튼
-                      ),
+              // ── 💡 핵심 수정: Badge 위젯을 사용하여 읽지 않은 빨간 점 완벽 구현 ──
+              Badge(
+                isLabelVisible: unreadCount > 0, // 개수가 0보다 클 때만 점 보이기
+                backgroundColor: const Color(0xFFFF5252), // 눈에 잘 띄는 빨간색
+                alignment: const Alignment(0.4, -0.4), // 아이콘 우측 상단으로 위치 미세조정
+                child: IconButton(
+                  onPressed: onNotifTap,
+                  icon: const Icon(
+                    Icons.notifications_outlined,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white.withOpacity(0.15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14), 
                     ),
                   ),
-                  if (unreadCount > 0)
-                    Positioned(
-                      right: 6,
-                      top: 6,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFF5252), // 더 화사한 빨간색
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                ],
+                ),
               ),
             ],
           ),
@@ -317,7 +303,7 @@ class _EmptyTripCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15), // 💡 반투명 화이트 배경
+        color: Colors.white.withOpacity(0.15), 
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -351,13 +337,13 @@ class _AddFriendButton extends StatelessWidget {
         width: 32,
         height: 32,
         decoration: BoxDecoration(
-          color: const Color(0xFFEDE9FF), // 💡 연한 보라색 배경
-          borderRadius: BorderRadius.circular(10), // 💡 둥근 사각형 느낌으로 변경
+          color: const Color(0xFFEDE9FF), 
+          borderRadius: BorderRadius.circular(10), 
         ),
         child: const Icon(
           Icons.person_add_outlined,
           size: 18,
-          color: Color(0xFF6144B0), // 진한 보라색 아이콘
+          color: Color(0xFF6144B0), 
         ),
       ),
     );

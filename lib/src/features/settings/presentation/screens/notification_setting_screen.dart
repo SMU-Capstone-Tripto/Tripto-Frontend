@@ -13,12 +13,10 @@ class NotificationSettingScreen extends ConsumerStatefulWidget {
       _NotificationSettingScreenState();
 }
 
-// 💡 반드시 일반 State가 아닌 ConsumerState를 상속해야 합니다.
 class _NotificationSettingScreenState
     extends ConsumerState<NotificationSettingScreen> {
   @override
   Widget build(BuildContext context) {
-    // 💡 ref.watch를 통해 전역 상태를 안전하게 구독합니다.
     final settings = ref.watch(notificationProvider);
 
     return Scaffold(
@@ -50,19 +48,31 @@ class _NotificationSettingScreenState
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  _NotifSection(label: '푸시 알림', items: [
+                  // 💡 일반 알림 섹션: 푸시 알림과 앱 내 알림 분리
+                  _NotifSection(label: '일반 알림', items: [
                     _NotifItem(
-                        title: '푸시 알림 받기',
-                        desc: '앱의 모든 알림을 받습니다',
+                        title: '푸시 알림 (백그라운드)',
+                        desc: '앱이 완전히 꺼져있을 때 기기 알림을 받습니다',
                         value: settings.push,
                         onChanged: (v) {
                           ref
                               .read(notificationProvider.notifier)
                               .updateSetting('notif_push', v);
                         }),
+                    _NotifItem(
+                        title: '앱 내 알림 (포그라운드)',
+                        desc: '앱 사용 중 상단 팝업 알림을 받습니다',
+                        value: settings.inApp,
+                        onChanged: (v) {
+                          ref
+                              .read(notificationProvider.notifier)
+                              .updateSetting('notif_in_app', v);
+                        }),
                   ]),
                   const SizedBox(height: 16),
-                  _NotifSection(label: '활동', items: [
+                  
+                  // 💡 활동 알림 섹션
+                  _NotifSection(label: '활동 알림', items: [
                     _NotifItem(
                         title: '친구 신청',
                         desc: '새로운 친구 신청이 오면 알림',
@@ -80,24 +90,6 @@ class _NotificationSettingScreenState
                           ref
                               .read(notificationProvider.notifier)
                               .updateSetting('notif_chat', v);
-                        }),
-                    _NotifItem(
-                        title: '일정 알림',
-                        desc: '여행 D-7, D-1 알림',
-                        value: settings.scheduleAlert,
-                        onChanged: (v) {
-                          ref
-                              .read(notificationProvider.notifier)
-                              .updateSetting('notif_schedule', v);
-                        }),
-                    _NotifItem(
-                        title: '여행 시작/종료',
-                        desc: '여행 당일 알림',
-                        value: settings.tripAlert,
-                        onChanged: (v) {
-                          ref
-                              .read(notificationProvider.notifier)
-                              .updateSetting('notif_trip', v);
                         }),
                   ]),
                 ],

@@ -561,9 +561,10 @@ final dayItemsProvider = Provider<List<ScheduleModel>>((ref) {
   return items.where((i) => i.day_number == day).toList()
     ..sort((a, b) => a.start_time.compareTo(b.start_time));
 });
-
+/*
 final mapPinsProvider =
     FutureProvider.family<List<ScheduleModel>, String>((ref, travelId) async {
   final repository = ref.watch(scheduleRepositoryProvider);
   return repository.getTravelMapPins(travelId);
 });
+*/

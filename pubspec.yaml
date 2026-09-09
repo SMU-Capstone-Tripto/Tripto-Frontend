@@ -74,6 +74,7 @@ flutter:
 
   # 로컬 이미지 에셋 등록
   assets:
+    - assets/images/
     - assets/images/paperplane.png
     - assets/images/kakao_logo.png
     - assets/images/google_logo.png

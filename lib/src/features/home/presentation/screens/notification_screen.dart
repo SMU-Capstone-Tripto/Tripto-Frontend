@@ -78,13 +78,16 @@ class NotificationScreen extends ConsumerWidget {
                         onTap: () =>
                             ref.read(notifFilterProvider.notifier).state = null,
                       ),
-                      ...NotificationType.values.map((t) => _FilterChip(
-                            label: t.label,
-                            active: filter == t,
-                            onTap: () => ref
-                                .read(notifFilterProvider.notifier)
-                                .state = t,
-                          )),
+                      // 💡 핵심 수정: where를 사용해 채팅 타입만 목록에서 제외합니다!
+                      ...NotificationType.values
+                          .where((t) => t != NotificationType.chat)
+                          .map((t) => _FilterChip(
+                                label: t.label,
+                                active: filter == t,
+                                onTap: () => ref
+                                    .read(notifFilterProvider.notifier)
+                                    .state = t,
+                              )),
                     ],
                   ),
                 ),

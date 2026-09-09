@@ -1,34 +1,37 @@
+// lib/src/settings/presentation/notification_setting_provider.dart
+
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// 본인 프로젝트 경로에 맞게 AuthStorage를 임포트 해주세요.
+import '../../../core/auth_storage.dart'; 
+
 class NotificationSettings {
   final bool push;
+  final bool inApp; // 💡 앱 내 알림 상태 추가
   final bool newFriend;
   final bool chat;
-  final bool scheduleAlert;
-  final bool tripAlert;
 
   NotificationSettings({
     this.push = true,
+    this.inApp = true, // 기본값 설정
     this.newFriend = true,
     this.chat = true,
-    this.scheduleAlert = true,
-    this.tripAlert = false,
   });
 
   NotificationSettings copyWith({
     bool? push,
+    bool? inApp,
     bool? newFriend,
     bool? chat,
-    bool? scheduleAlert,
-    bool? tripAlert,
   }) {
     return NotificationSettings(
       push: push ?? this.push,
+      inApp: inApp ?? this.inApp,
       newFriend: newFriend ?? this.newFriend,
       chat: chat ?? this.chat,
-      scheduleAlert: scheduleAlert ?? this.scheduleAlert,
-      tripAlert: tripAlert ?? this.tripAlert,
     );
   }
 }
@@ -42,26 +45,46 @@ class NotificationNotifier extends StateNotifier<NotificationSettings> {
     final prefs = await SharedPreferences.getInstance();
     state = NotificationSettings(
       push: prefs.getBool('notif_push') ?? true,
+      inApp: prefs.getBool('notif_in_app') ?? true, // 💡 로컬에서 불러오기 추가
       newFriend: prefs.getBool('notif_new_friend') ?? true,
       chat: prefs.getBool('notif_chat') ?? true,
-      scheduleAlert: prefs.getBool('notif_schedule') ?? true,
-      tripAlert: prefs.getBool('notif_trip') ?? false,
     );
   }
 
   Future<void> updateSetting(String key, bool value) async {
+    // 1. 로컬 저장소 즉시 업데이트
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
 
-    if (key == 'notif_push')
+    if (key == 'notif_push') {
       state = state.copyWith(push: value);
-    else if (key == 'notif_new_friend')
+    } else if (key == 'notif_in_app') {
+      state = state.copyWith(inApp: value); // 💡 앱 내 알림 상태 업데이트
+    } else if (key == 'notif_new_friend') {
       state = state.copyWith(newFriend: value);
-    else if (key == 'notif_chat')
+    } else if (key == 'notif_chat') {
       state = state.copyWith(chat: value);
-    else if (key == 'notif_schedule')
-      state = state.copyWith(scheduleAlert: value);
-    else if (key == 'notif_trip') state = state.copyWith(tripAlert: value);
+    } 
+
+    // 2. 백엔드 서버에 변경된 알림 설정 값 전송
+    try {
+      final response = await http.patch(
+        Uri.parse('${AuthStorage.baseUrl}/users/me/notifications'), 
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${AuthStorage.accessToken}',
+        },
+        body: jsonEncode({
+          key: value, // 💡 백엔드로 'notif_in_app': false 같은 형태가 날아갑니다.
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        print('알림 설정 서버 연동 실패: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('알림 설정 네트워크 에러: $e');
+    }
   }
 }
 
