@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // 💡 환경변수 패키지 추가
+import 'package:flutter_dotenv/flutter_dotenv.dart'; 
 import 'token_storage.dart';
 import 'api_exception.dart';
 
@@ -27,7 +27,10 @@ class DioClient {
 // ── JWT 인터셉터 ──
 class _AuthInterceptor extends Interceptor {
   final Dio _dio;
-  bool _isRefreshing = false; // 중복 갱신 방지
+  bool _isRefreshing = false; 
+  
+  // 토큰 갱신 중 발생하는 401 요청들을 대기시킬 큐(Queue)
+  final List<Map<String, dynamic>> _failedRequests = [];
 
   _AuthInterceptor(this._dio);
 
@@ -42,30 +45,67 @@ class _AuthInterceptor extends Interceptor {
     handler.next(options);
   }
 
-  // 401 에러 시 토큰 자동 갱신
+  // 401 에러 시 토큰 자동 갱신 및 동시성 처리
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 401 && !_isRefreshing) {
+    if (err.response?.statusCode == 401) {
+      
+      if (_isRefreshing) {
+        // 이미 다른 요청이 토큰을 갱신 중이라면, 실패 처리하지 않고 큐에 보관
+        _failedRequests.add({'err': err, 'handler': handler});
+        return; 
+      }
+
       _isRefreshing = true;
       try {
         // Refresh Token으로 새 Access Token 발급
         final refreshed = await _refreshToken();
+        
         if (refreshed) {
-          // 새 토큰으로 원래 요청 재시도
           final newToken = await TokenStorage.getAccessToken();
+
+          // 1. 트리거가 된 첫 번째 요청 새 토큰으로 재시도
           err.requestOptions.headers['Authorization'] = 'Bearer $newToken';
           final response = await _dio.fetch(err.requestOptions);
           handler.resolve(response);
-          return;
+
+          // 2. 큐에 대기 중이던 나머지 요청들 일괄 재시도
+          for (var req in _failedRequests) {
+            final queuedErr = req['err'] as DioException;
+            final queuedHandler = req['handler'] as ErrorInterceptorHandler;
+            
+            queuedErr.requestOptions.headers['Authorization'] = 'Bearer $newToken';
+            
+            try {
+              final queuedResponse = await _dio.fetch(queuedErr.requestOptions);
+              queuedHandler.resolve(queuedResponse);
+            } catch (e) {
+              queuedHandler.next(queuedErr);
+            }
+          }
+        } else {
+          // 갱신 실패: 첫 요청 및 큐에 있는 모든 요청 에러 처리
+          _rejectAll(err, handler);
         }
       } catch (_) {
-        // 갱신 실패 → 로그아웃 처리
-        await TokenStorage.clearTokens();
+        _rejectAll(err, handler);
       } finally {
+        // 상태 초기화 및 큐 비우기
         _isRefreshing = false;
+        _failedRequests.clear();
       }
+      return;
     }
     handler.next(err);
+  }
+
+  // 실패 시 일괄 거절 및 로그아웃 처리
+  void _rejectAll(DioException err, ErrorInterceptorHandler handler) async {
+    handler.next(err);
+    for (var req in _failedRequests) {
+      (req['handler'] as ErrorInterceptorHandler).next(req['err'] as DioException);
+    }
+    await TokenStorage.clearTokens();
   }
 
   // 토큰 갱신 요청
@@ -107,7 +147,7 @@ class _LogInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     debugPrint('── 에러 ${err.response?.statusCode} ──');
-    debugPrint(err.message);
+    debugPrint(err.message ?? 'Unknown Error');
     handler.next(err);
   }
 }
