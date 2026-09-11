@@ -4,7 +4,6 @@ import 'network/token_storage.dart';
 class AuthStorage {
   static String get baseUrl => dotenv.env['BASE_URL'] ?? 'https://dev-service.shop/api/v1';
   
-  // 로그인 및 회원가입 성공 시 발급받은 액세스 토큰을 메모리에 실시간 보관
   static String? accessToken;
   static String? refreshToken;
 
