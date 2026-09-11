@@ -94,6 +94,8 @@ void main() async {
     javaScriptAppKey: dotenv.env['KAKAO_JS_KEY'] ?? '',
   );
 
+  await dotenv.load(fileName: ".env");
+  
   // 6. 단 한 번의 runApp 호출 (여기서부터 UI를 그림)
   runApp(const ProviderScope(child: TriptoApp()));
 }

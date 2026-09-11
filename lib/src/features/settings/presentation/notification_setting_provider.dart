@@ -10,28 +10,20 @@ import '../../../core/auth_storage.dart';
 
 class NotificationSettings {
   final bool push;
-  final bool inApp; // 💡 앱 내 알림 상태 추가
-  final bool newFriend;
-  final bool chat;
+  final bool inApp; // 앱 내 알림(로컬)
 
   NotificationSettings({
     this.push = true,
-    this.inApp = true, // 기본값 설정
-    this.newFriend = true,
-    this.chat = true,
+    this.inApp = true,
   });
 
   NotificationSettings copyWith({
     bool? push,
     bool? inApp,
-    bool? newFriend,
-    bool? chat,
   }) {
     return NotificationSettings(
       push: push ?? this.push,
       inApp: inApp ?? this.inApp,
-      newFriend: newFriend ?? this.newFriend,
-      chat: chat ?? this.chat,
     );
   }
 }
@@ -45,9 +37,7 @@ class NotificationNotifier extends StateNotifier<NotificationSettings> {
     final prefs = await SharedPreferences.getInstance();
     state = NotificationSettings(
       push: prefs.getBool('notif_push') ?? true,
-      inApp: prefs.getBool('notif_in_app') ?? true, // 💡 로컬에서 불러오기 추가
-      newFriend: prefs.getBool('notif_new_friend') ?? true,
-      chat: prefs.getBool('notif_chat') ?? true,
+      inApp: prefs.getBool('notif_in_app') ?? true,
     );
   }
 
@@ -59,12 +49,8 @@ class NotificationNotifier extends StateNotifier<NotificationSettings> {
     if (key == 'notif_push') {
       state = state.copyWith(push: value);
     } else if (key == 'notif_in_app') {
-      state = state.copyWith(inApp: value); // 💡 앱 내 알림 상태 업데이트
-    } else if (key == 'notif_new_friend') {
-      state = state.copyWith(newFriend: value);
-    } else if (key == 'notif_chat') {
-      state = state.copyWith(chat: value);
-    } 
+      state = state.copyWith(inApp: value);
+    }
 
     // 2. 백엔드 서버에 변경된 알림 설정 값 전송
     try {
@@ -75,7 +61,7 @@ class NotificationNotifier extends StateNotifier<NotificationSettings> {
           'Authorization': 'Bearer ${AuthStorage.accessToken}',
         },
         body: jsonEncode({
-          key: value, // 💡 백엔드로 'notif_in_app': false 같은 형태가 날아갑니다.
+          key: value, 
         }),
       );
 

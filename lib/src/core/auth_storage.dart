@@ -1,8 +1,8 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // 💡 환경변수 패키지 추가
 import 'network/token_storage.dart';
 
 class AuthStorage {
-  // 백엔드 기본 API 주소 단일 창구화
-  static const String baseUrl = 'http://dev-service.shop:8000/api/v1';
+  static String get baseUrl => dotenv.env['BASE_URL'] ?? 'https://dev-service.shop/api/v1';
   
   // 로그인 및 회원가입 성공 시 발급받은 액세스 토큰을 메모리에 실시간 보관
   static String? accessToken;

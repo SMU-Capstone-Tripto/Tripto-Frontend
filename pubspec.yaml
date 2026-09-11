@@ -43,7 +43,7 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # 환경 변수 관리
-  flutter_dotenv: ^5.1.0
+  flutter_dotenv: ^6.0.1
   
   # 웹 뷰 패키지
   url_launcher: ^6.3.0
@@ -74,6 +74,7 @@ flutter:
 
   # 로컬 이미지 에셋 등록
   assets:
+    - .env
     - assets/images/
     - assets/images/paperplane.png
     - assets/images/kakao_logo.png

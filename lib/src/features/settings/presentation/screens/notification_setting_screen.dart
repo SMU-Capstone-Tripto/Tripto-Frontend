@@ -48,10 +48,9 @@ class _NotificationSettingScreenState
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  // 💡 일반 알림 섹션: 푸시 알림과 앱 내 알림 분리
-                  _NotifSection(label: '일반 알림', items: [
+                  _NotifSection(label: '수신 설정', items: [
                     _NotifItem(
-                        title: '푸시 알림 (백그라운드)',
+                        title: '푸시 알림',
                         desc: '앱이 완전히 꺼져있을 때 기기 알림을 받습니다',
                         value: settings.push,
                         onChanged: (v) {
@@ -60,36 +59,13 @@ class _NotificationSettingScreenState
                               .updateSetting('notif_push', v);
                         }),
                     _NotifItem(
-                        title: '앱 내 알림 (포그라운드)',
-                        desc: '앱 사용 중 상단 팝업 알림을 받습니다',
+                        title: '앱 내 알림 (로컬)',
+                        desc: '앱 사용 중 화면 상단 팝업 알림을 받습니다',
                         value: settings.inApp,
                         onChanged: (v) {
                           ref
                               .read(notificationProvider.notifier)
                               .updateSetting('notif_in_app', v);
-                        }),
-                  ]),
-                  const SizedBox(height: 16),
-                  
-                  // 💡 활동 알림 섹션
-                  _NotifSection(label: '활동 알림', items: [
-                    _NotifItem(
-                        title: '친구 신청',
-                        desc: '새로운 친구 신청이 오면 알림',
-                        value: settings.newFriend,
-                        onChanged: (v) {
-                          ref
-                              .read(notificationProvider.notifier)
-                              .updateSetting('notif_new_friend', v);
-                        }),
-                    _NotifItem(
-                        title: '채팅',
-                        desc: '새로운 메시지가 도착하면 알림',
-                        value: settings.chat,
-                        onChanged: (v) {
-                          ref
-                              .read(notificationProvider.notifier)
-                              .updateSetting('notif_chat', v);
                         }),
                   ]),
                 ],

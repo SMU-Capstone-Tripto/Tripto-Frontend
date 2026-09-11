@@ -1,17 +1,16 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // 💡 환경변수 패키지 추가
 import 'token_storage.dart';
 import 'api_exception.dart';
-
-const _baseUrl = 'http://dev-service.shop:8000/api/v1';
 
 class DioClient {
   late final Dio _dio;
 
   DioClient() {
     _dio = Dio(BaseOptions(
-      baseUrl: _baseUrl,
+      baseUrl: dotenv.env['BASE_URL'] ?? 'https://dev-service.shop/api/v1',
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
       headers: {'Content-Type': 'application/json'},

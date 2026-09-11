@@ -1,10 +1,12 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // 💡 환경변수 패키지 추가
 
 /// JWT 토큰을 안전하게 저장/조회
 /// flutter_secure_storage → Android Keystore, iOS Keychain 사용
 class TokenStorage {
-  static const String baseUrl = 'http://dev-service.shop:8000/api/v1';
+  static String get baseUrl => dotenv.env['BASE_URL'] ?? 'https://dev-service.shop/api/v1';
+  
   static const _storage = FlutterSecureStorage();
   static const _accessKey = 'access_token';
   static const _refreshKey = 'refresh_token';
